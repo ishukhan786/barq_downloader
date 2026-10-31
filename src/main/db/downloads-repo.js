@@ -61,7 +61,8 @@ class DownloadsRepo {
         COALESCE(SUM(status = 'completed'), 0)                           AS completed,
         COALESCE(SUM(status IN ('failed','canceled')), 0)                AS failed,
         COALESCE(SUM(task_type = 'video'), 0)                            AS video,
-        COALESCE(SUM(CASE WHEN status = 'completed' THEN downloaded_bytes ELSE 0 END), 0) AS completed_bytes
+        COALESCE(SUM(CASE WHEN status = 'completed' THEN downloaded_bytes ELSE 0 END), 0) AS completed_bytes,
+        COALESCE(SUM(downloaded_bytes), 0)                               AS total_downloaded_bytes
       FROM downloads`).get();
     return { ...row };
   }

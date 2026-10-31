@@ -15,6 +15,7 @@ class BarqApp {
       search: '',
       info: null,
       stats: {},
+      settings: {},
     };
     this.liveStats = new Map();
     this.currentViewInstance = null;
@@ -29,17 +30,23 @@ class BarqApp {
 
     try {
       this.state.info = await this.api.app.getInfo();
+      const loadedSettings = await this.api.settings.get();
+      this.state.settings = loadedSettings || {};
+
+      this.applyTheme(this.state.settings.theme || 'dark');
       this.updateAppInfoUI();
       this.bindEvents();
       await this.refreshStats();
+      await this.refreshBrowserStatus();
 
       // Read initial hash or default to dashboard
       const initialView = window.location.hash.replace(/^#/, '') || 'dashboard';
       await this.navigate(initialView, false);
 
-      // Periodically refresh stats and current view
+      // Periodically refresh stats, bridge status, and current view
       this.refreshTimer = setInterval(() => {
         this.refreshStats();
+        this.refreshBrowserStatus();
         if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
           this.currentViewInstance.refresh();
         }
@@ -49,6 +56,14 @@ class BarqApp {
       document.body.dataset.ready = '1';
     } catch (err) {
       console.error('BARQ initialization failed:', err);
+    }
+  }
+
+  applyTheme(theme) {
+    if (theme === 'system') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
     }
   }
 
@@ -67,6 +82,34 @@ class BarqApp {
     if (engEl && engDot) {
       engEl.textContent = 'Engine Ready';
       engDot.className = 'dot dot-ok';
+    }
+  }
+
+  async refreshBrowserStatus() {
+    try {
+      if (!this.api.browser || !this.api.browser.getStatus) return;
+      const res = await this.api.browser.getStatus();
+      const pillText = $('#titlebar-extension-text');
+      const pill = $('#titlebar-extension-pill');
+      const bridgeText = $('#status-bridge-text');
+
+      if (res && res.ok && res.status && res.status.pipeServer && res.status.pipeServer.listening) {
+        if (pillText) pillText.textContent = 'Extension Bridge: Ready';
+        if (pill) {
+          pill.classList.remove('extension-pill-offline');
+          pill.classList.add('extension-pill-online');
+        }
+        if (bridgeText) bridgeText.textContent = 'Extension Pipe Active';
+      } else {
+        if (pillText) pillText.textContent = 'Extension: Offline';
+        if (pill) {
+          pill.classList.remove('extension-pill-online');
+          pill.classList.add('extension-pill-offline');
+        }
+        if (bridgeText) bridgeText.textContent = 'Extension Pipe Inactive';
+      }
+    } catch (err) {
+      // Non-critical background status update
     }
   }
 
@@ -127,8 +170,8 @@ class BarqApp {
       liveStats: this.liveStats,
       refreshStats: () => this.refreshStats(),
       navigate: (v) => this.navigate(v),
-      openAddDownload: async () => {
-        const record = await showAddDownloadDialog(ctx);
+      openAddDownload: async (urlPrefill = '') => {
+        const record = await showAddDownloadDialog(ctx, urlPrefill);
         if (record) {
           if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
             await this.currentViewInstance.refresh();
@@ -164,6 +207,23 @@ class BarqApp {
     }
   }
 
+  toggleSidebar() {
+    const isCollapsed = document.body.dataset.sidebar === 'collapsed';
+    document.body.dataset.sidebar = isCollapsed ? 'expanded' : 'collapsed';
+  }
+
+  async toggleTheme() {
+    try {
+      const current = this.state.settings.theme || 'dark';
+      const nextTheme = current === 'dark' ? 'light' : 'dark';
+      this.state.settings.theme = nextTheme;
+      this.applyTheme(nextTheme);
+      await this.api.settings.update({ theme: nextTheme });
+    } catch (err) {
+      console.warn('Theme toggle failed:', err);
+    }
+  }
+
   bindEvents() {
     // Nav buttons
     for (const btn of $$('[data-nav]')) {
@@ -172,23 +232,38 @@ class BarqApp {
       });
     }
 
-    // Global add button
-    const addBtn = $('#btn-add');
-    if (addBtn) {
-      addBtn.addEventListener('click', async () => {
-        const record = await showAddDownloadDialog({
-          api: this.api,
-          state: this.state,
-          refreshStats: () => this.refreshStats(),
-        });
-        if (record) {
-          if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
-            await this.currentViewInstance.refresh();
-          }
-          await this.refreshStats();
-        }
-      });
+    // Sidebar collapse toggle
+    const sidebarToggle = $('#sidebar-toggle');
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', () => this.toggleSidebar());
     }
+
+    // Theme toggle button
+    const themeBtn = $('#theme-toggle');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', () => this.toggleTheme());
+    }
+
+    // Global add buttons (sidebar & titlebar)
+    const openAdd = async () => {
+      const record = await showAddDownloadDialog({
+        api: this.api,
+        state: this.state,
+        refreshStats: () => this.refreshStats(),
+      });
+      if (record) {
+        if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
+          await this.currentViewInstance.refresh();
+        }
+        await this.refreshStats();
+      }
+    };
+
+    const addBtn = $('#btn-add');
+    if (addBtn) addBtn.addEventListener('click', openAdd);
+
+    const quickAddBtn = $('#btn-quick-add');
+    if (quickAddBtn) quickAddBtn.addEventListener('click', openAdd);
 
     // Global search input
     const globalSearch = $('#global-search');
@@ -215,6 +290,10 @@ class BarqApp {
 
     // Settings listener
     this.api.settings.onChanged((updatedSettings) => {
+      this.state.settings = updatedSettings;
+      if (updatedSettings.theme) {
+        this.applyTheme(updatedSettings.theme);
+      }
       if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
         this.currentViewInstance.refresh();
       }
@@ -231,11 +310,10 @@ class BarqApp {
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        showAddDownloadDialog({
-          api: this.api,
-          state: this.state,
-          refreshStats: () => this.refreshStats(),
-        });
+        openAdd();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        this.toggleSidebar();
       }
     });
 

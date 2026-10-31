@@ -4,74 +4,169 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BARQ Downloader</title>
+  <title>BARQ Downloader — Speed at Every Click.</title>
   <link rel="stylesheet" href="styles/app.css">
   <script type="module" src="js/app.js"></script>
 </head>
-<body>
+<body data-sidebar="expanded">
   <a class="skip-link" href="#view">Skip to content</a>
 
   <header class="titlebar">
     <div class="titlebar-brand">
-      <img src="assets/brand/barq-mark.svg" alt="" width="20" height="20">
+      <img src="assets/brand/barq-mark.svg" alt="BARQ Logo" width="22" height="22">
       <span class="titlebar-name">BARQ Downloader</span>
       <span class="titlebar-urdu" lang="ur" dir="rtl">برق ڈاؤنلوڈر</span>
+      <span class="titlebar-badge">v0.1.0</span>
     </div>
+
     <div class="titlebar-search no-drag">
-      <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="global-search" type="search" placeholder="Search downloads  (Ctrl+F)" aria-label="Search downloads" autocomplete="off" spellcheck="false" maxlength="200">
+      <svg class="icon icon-search" aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="global-search" type="search" placeholder="Search downloads, files, URLs... (Ctrl+F)" aria-label="Search downloads" autocomplete="off" spellcheck="false" maxlength="200">
+      <kbd class="kbd-shortcut">Ctrl+F</kbd>
+    </div>
+
+    <div class="titlebar-actions no-drag">
+      <div class="extension-pill" id="titlebar-extension-pill" title="Browser Extension Native Bridge Status">
+        <span class="pulse-dot"></span>
+        <span class="extension-pill-text" id="titlebar-extension-text">Extension: Ready</span>
+      </div>
+
+      <button type="button" class="btn-icon-subtle" id="theme-toggle" title="Toggle Dark / Light Theme" aria-label="Toggle Theme">
+        <svg class="icon icon-theme" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364-.707-.707M6.343 6.343l-.707-.707m12.728 0-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/></svg>
+      </button>
+
+      <button type="button" class="btn btn-primary btn-sm btn-quick-add" id="btn-quick-add" title="Add New Download (Ctrl+N)">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        <span>New Download</span>
+      </button>
     </div>
   </header>
 
   <div class="shell">
-    <nav class="sidebar" aria-label="Main navigation">
-      <div class="sidebar-logo">
-        <img src="assets/brand/barq-mark.svg" alt="" width="40" height="40">
-        <div class="sidebar-logo-text">
-          <span class="wordmark">BARQ</span>
-          <span class="wordmark-urdu" lang="ur" dir="rtl">برق</span>
+    <aside class="sidebar" aria-label="Main navigation">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <img src="assets/brand/barq-mark.svg" alt="BARQ" width="34" height="34">
+          <div class="sidebar-logo-text">
+            <span class="wordmark">BARQ</span>
+            <span class="wordmark-urdu" lang="ur" dir="rtl">برق</span>
+          </div>
         </div>
+        <button type="button" class="sidebar-toggle-btn no-drag" id="sidebar-toggle" title="Toggle Sidebar (Ctrl+B)" aria-label="Toggle Sidebar">
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
       </div>
 
-      <button class="btn btn-primary btn-add no-drag" id="btn-add" type="button" title="Add Download (Ctrl+N)">
-        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-        Add Download
-      </button>
+      <div class="sidebar-action-wrap">
+        <button class="btn btn-primary btn-add no-drag" id="btn-add" type="button" title="Add Download (Ctrl+N)">
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="btn-add-label">New Download</span>
+          <kbd class="kbd-sidebar">Ctrl+N</kbd>
+        </button>
+      </div>
 
       <ul class="nav-list" role="list">
-        <li><button type="button" class="nav-item" data-nav="dashboard"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button></li>
+        <li>
+          <button type="button" class="nav-item" data-nav="dashboard" title="Dashboard">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+            <span class="nav-text">Dashboard</span>
+          </button>
+        </li>
       </ul>
+
       <p class="nav-heading">Downloads</p>
       <ul class="nav-list" role="list">
-        <li><button type="button" class="nav-item" data-nav="all"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>All Downloads</span><span class="nav-count" data-count="total"></span></button></li>
-        <li><button type="button" class="nav-item" data-nav="downloading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg><span>Downloading</span><span class="nav-count" data-count="active"></span></button></li>
-        <li><button type="button" class="nav-item" data-nav="queued"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span>Queued</span><span class="nav-count" data-count="queued"></span></button></li>
-        <li><button type="button" class="nav-item" data-nav="paused"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg><span>Paused</span><span class="nav-count" data-count="paused"></span></button></li>
-        <li><button type="button" class="nav-item" data-nav="completed"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg><span>Completed</span><span class="nav-count" data-count="completed"></span></button></li>
-        <li><button type="button" class="nav-item" data-nav="failed"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg><span>Failed</span><span class="nav-count nav-count-danger" data-count="failed"></span></button></li>
-        <li><button type="button" class="nav-item" data-nav="video"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2v8l-4-2"/></svg><span>Video Downloads</span><span class="nav-count" data-count="video"></span></button></li>
+        <li>
+          <button type="button" class="nav-item" data-nav="all" title="All Downloads">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <span class="nav-text">All Downloads</span>
+            <span class="nav-count" data-count="total"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="downloading" title="Active Downloading">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>
+            <span class="nav-text">Downloading</span>
+            <span class="nav-count nav-count-pulse" data-count="active"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="queued" title="Queued Downloads">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+            <span class="nav-text">Queued</span>
+            <span class="nav-count" data-count="queued"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="paused" title="Paused Downloads">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg>
+            <span class="nav-text">Paused</span>
+            <span class="nav-count" data-count="paused"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="completed" title="Completed Downloads">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>
+            <span class="nav-text">Completed</span>
+            <span class="nav-count" data-count="completed"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="failed" title="Failed Downloads">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>
+            <span class="nav-text">Failed</span>
+            <span class="nav-count nav-count-danger" data-count="failed"></span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="video" title="Video Downloads">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2v8l-4-2"/></svg>
+            <span class="nav-text">Video Downloads</span>
+            <span class="nav-count" data-count="video"></span>
+          </button>
+        </li>
       </ul>
-      <p class="nav-heading">BARQ</p>
+
+      <p class="nav-heading">System</p>
       <ul class="nav-list" role="list">
-        <li><button type="button" class="nav-item" data-nav="settings"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Settings</span></button></li>
-        <li><button type="button" class="nav-item" data-nav="about"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg><span>About BARQ</span></button></li>
+        <li>
+          <button type="button" class="nav-item" data-nav="settings" title="Settings">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            <span class="nav-text">Settings</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="nav-item" data-nav="about" title="About BARQ">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></svg>
+            <span class="nav-text">About BARQ</span>
+          </button>
+        </li>
       </ul>
 
       <div class="sidebar-footer">
+        <div class="sidebar-engine-pill">
+          <span class="pulse-dot pulse-ok"></span>
+          <span class="sidebar-engine-text">Engine Online</span>
+        </div>
         <span class="tagline">Speed at Every Click.</span>
       </div>
-    </nav>
+    </aside>
 
     <main id="view" class="view" tabindex="-1" aria-live="polite"></main>
   </div>
 
   <footer class="statusbar" aria-label="Status">
-    <span class="status-item"><span class="dot" id="status-engine-dot"></span><span id="status-engine">Engine</span></span>
-    <span class="status-item">Speed <strong id="status-speed">0 B/s</strong></span>
-    <span class="status-item">Active <strong id="status-active">0</strong></span>
+    <span class="status-item"><span class="dot dot-ok" id="status-engine-dot"></span><span id="status-engine">Engine Ready</span></span>
+    <span class="status-divider"></span>
+    <span class="status-item"><span class="status-label">Speed</span><strong id="status-speed">0 B/s</strong></span>
+    <span class="status-divider"></span>
+    <span class="status-item"><span class="status-label">Active</span><strong id="status-active">0</strong></span>
     <span class="status-spacer"></span>
-    <span class="status-item" id="status-data"></span>
-    <span class="status-item" id="status-version"></span>
+    <span class="status-item" id="status-browser-bridge"><span class="dot dot-info"></span><span id="status-bridge-text">Extension Pipe Active</span></span>
+    <span class="status-divider"></span>
+    <span class="status-item" id="status-data">Data: Standard</span>
+    <span class="status-divider"></span>
+    <span class="status-item" id="status-version">v0.1.0</span>
   </footer>
 
   <div class="toast-region" id="toasts" role="status" aria-live="polite"></div>

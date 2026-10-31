@@ -4,6 +4,7 @@
  * BARQ Downloader — Electron main process entry.
  * برق ڈاؤنلوڈر — Speed at Every Click.
  */
+const fs = require('node:fs');
 const path = require('node:path');
 const { app, session, dialog, Menu } = require('electron');
 const brand = require('../shared/brand');
@@ -286,7 +287,40 @@ function runVerify(win, mode, dm, logger) {
 
   win.webContents.once('did-finish-load', async () => {
     try {
-      if (mode === 'interrupted-crash') {
+      if (mode === 'screenshot') {
+        const script = `(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          for (let i = 0; i < 100 && document.body.dataset.ready !== '1'; i++) await wait(100);
+          return { ready: true };
+        })()`;
+        await win.webContents.executeJavaScript(script, true);
+        const screenshotDir = path.join(APP_ROOT, 'assets', 'screenshots');
+        fs.mkdirSync(screenshotDir, { recursive: true });
+
+        // 1. Capture 1920x1080
+        win.setContentSize(1920, 1080);
+        await new Promise((r) => setTimeout(r, 1200));
+        const img1080 = await win.webContents.capturePage();
+        const path1080 = path.join(screenshotDir, 'dashboard-1920x1080.png');
+        fs.writeFileSync(path1080, img1080.toPNG());
+
+        // 2. Capture 1366x768
+        win.setContentSize(1366, 768);
+        await new Promise((r) => setTimeout(r, 1000));
+        const img768 = await win.webContents.capturePage();
+        const path768 = path.join(screenshotDir, 'dashboard-1366x768.png');
+        fs.writeFileSync(path768, img768.toPNG());
+
+        clearTimeout(timeout);
+        console.log('BARQ_SCREENSHOT_RESULT ' + JSON.stringify({
+          ok: true,
+          path1080,
+          bytes1080: img1080.toPNG().length,
+          path768,
+          bytes768: img768.toPNG().length,
+        }));
+        app.exit(0);
+      } else if (mode === 'interrupted-crash') {
         const script = `(async () => {
           const wait = (ms) => new Promise((r) => setTimeout(r, ms));
           for (let i = 0; i < 100 && document.body.dataset.ready !== '1'; i++) await wait(100);

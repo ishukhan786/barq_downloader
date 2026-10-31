@@ -30,6 +30,21 @@ const ICONS = {
   database: ['M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z', 'M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6', 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'],
   external: ['M14 4h6v6', 'M20 4 10 14', 'M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'],
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'm20 20-3.5-3.5'],
+  sun: ['M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364-.707-.707M6.343 6.343l-.707-.707m12.728 0-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z'],
+  moon: ['M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'],
+  paste: ['M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2', 'M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z'],
+  copy: ['M9 9h11a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
+  sparkles: ['m12 3 1.9 5.9L20 10.8l-5.1 1.9L13 18.6l-1.9-5.9L6 10.8l5.1-1.9L12 3z'],
+  clock: ['M12 6v6l4 2', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z'],
+  trending: ['m23 6-9.5 9.5-5-5L1 18', 'M17 6h6v6'],
+  speed: ['M12 14l4-4', 'M3.34 19a10 10 0 1 1 17.32 0'],
+  layers: ['m12 2 10 5-10 5L2 7l10-5z', 'm2 17 10 5 10-5', 'm2 12 10 5 10-5'],
+  browser: ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M4 9h16', 'M8 6.5h.01', 'M11 6.5h.01'],
+  sidebar: ['M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M9 4v16'],
+  arrowRight: ['M5 12h14', 'm12 5 7 7-7 7'],
+  chart: ['M18 20V10', 'M12 20V4', 'M6 20v-6'],
+  zap: ['M13 2 3 14h8l-1 8 11-12h-8z'],
+  checkCircle: ['M22 11.08V12a10 10 0 1 1-5.93-9.14', 'm22 4-10 10.01-3-3'],
 };
 
 export function icon(name, cls = 'icon') {
@@ -43,6 +58,23 @@ export function icon(name, cls = 'icon') {
     svg.appendChild(p);
   }
   return svg;
+}
+
+/**
+ * Helper to build custom SVG trees (e.g. charts, badges) safely without innerHTML.
+ */
+export function svgEl(tag, props = {}, ...children) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') el.setAttribute('class', v);
+    else el.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const c of children.flat(Infinity)) {
+    if (c === null || c === undefined || c === false) continue;
+    el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
 }
 
 /**

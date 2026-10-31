@@ -3,7 +3,7 @@ import { h, icon } from '../dom.js';
 import { formatBytes } from '../format.js';
 import { openModal, toast, guard } from '../ui.js';
 
-export async function showAddDownloadDialog(ctx) {
+export async function showAddDownloadDialog(ctx, initialUrl = '') {
   let settings = {};
   try {
     settings = await ctx.api.settings.get();
@@ -17,6 +17,7 @@ export async function showAddDownloadDialog(ctx) {
       class: 'input input-wide',
       type: 'url',
       placeholder: 'https://example.com/file.zip',
+      value: initialUrl || '',
       autocomplete: 'off',
       spellcheck: 'false',
     });
@@ -111,6 +112,10 @@ export async function showAddDownloadDialog(ctx) {
     });
 
     urlInput.addEventListener('blur', checkAndProbe);
+
+    if (initialUrl) {
+      setTimeout(checkAndProbe, 50);
+    }
 
     filenameInput.addEventListener('input', () => {
       filenameInput.dataset.auto = '0';
