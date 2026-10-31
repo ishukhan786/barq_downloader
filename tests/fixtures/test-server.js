@@ -2,6 +2,36 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const { Readable } = require('node:stream');
+
+/**
+ * Stream a repeated buffer without allocating full memory.
+ */
+class RepeatedBufferStream extends Readable {
+  constructor(unitBuffer, totalLength, startByte, endByte, options) {
+    super(options);
+    this.unitBuffer = unitBuffer;
+    this.unitLen = unitBuffer.length;
+    this.totalLength = totalLength;
+    this.current = startByte;
+    this.end = endByte;
+  }
+
+  _read(size) {
+    if (this.current > this.end) {
+      this.push(null);
+      return;
+    }
+    const remaining = this.end - this.current + 1;
+    const chunkSize = Math.min(size || 65536, remaining, 1024 * 1024);
+    const offsetInUnit = this.current % this.unitLen;
+    const bytesInThisUnit = Math.min(chunkSize, this.unitLen - offsetInUnit);
+
+    const slice = this.unitBuffer.subarray(offsetInUnit, offsetInUnit + bytesInThisUnit);
+    this.current += bytesInThisUnit;
+    this.push(slice);
+  }
+}
 
 /**
  * Creates a deterministic test buffer of given size using a seed byte.
@@ -38,6 +68,13 @@ function createTestServer() {
   const hash10mb = sha256(buf10mb);
   const hash100mb = sha256(buf100mb);
   const hashUneven = sha256(bufUneven);
+
+  const total1gbBytes = 1024 * 1024 * 1024; // 1 GB (1,073,741,824 bytes)
+  const hash1gbBuilder = crypto.createHash('sha256');
+  for (let i = 0; i < 1024; i++) {
+    hash1gbBuilder.update(buf1mb);
+  }
+  const hash1gb = hash1gbBuilder.digest('hex');
 
   let retryAttempts = 0;
   let dynamicEtagCount = 0;
@@ -103,6 +140,48 @@ function createTestServer() {
     }
     if (pathname === '/100mb') {
       return serveBuffer(req, res, buf100mb, hash100mb, '100mb.bin');
+    }
+    if (pathname === '/1gb') {
+      const range = req.headers['range'];
+      let start = 0;
+      let end = total1gbBytes - 1;
+      let isPartial = false;
+
+      if (range) {
+        const match = /^bytes=(\d+)-(\d+)?$/i.exec(range);
+        if (match) {
+          start = Number.parseInt(match[1], 10);
+          if (match[2]) end = Number.parseInt(match[2], 10);
+          if (start >= total1gbBytes || start > end) {
+            res.writeHead(416, { 'Content-Range': `bytes */${total1gbBytes}` });
+            return res.end();
+          }
+          isPartial = true;
+        }
+      }
+
+      const contentLength = end - start + 1;
+      const headers = {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': contentLength,
+        'Accept-Ranges': 'bytes',
+        'ETag': `"${hash1gb}"`,
+      };
+
+      if (isPartial) {
+        headers['Content-Range'] = `bytes ${start}-${end}/${total1gbBytes}`;
+        res.writeHead(206, headers);
+      } else {
+        res.writeHead(200, headers);
+      }
+
+      if (req.method === 'HEAD') return res.end();
+
+      const stream = new RepeatedBufferStream(buf1mb, total1gbBytes, start, end);
+      req.on('close', () => { stream.destroy(); });
+      stream.on('error', () => { res.destroy(); });
+      stream.pipe(res);
+      return;
     }
     if (pathname === '/uneven') {
       return serveBuffer(req, res, bufUneven, hashUneven, 'uneven.bin');
@@ -495,6 +574,8 @@ function createTestServer() {
     hash10mb,
     hash100mb,
     hashUneven,
+    hash1gb,
+    total1gbBytes,
     resetRetries: () => { retryAttempts = 0; },
     start: () => new Promise((resolve) => {
       server.listen(0, '127.0.0.1', () => {

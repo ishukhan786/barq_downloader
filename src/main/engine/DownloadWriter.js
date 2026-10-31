@@ -79,6 +79,15 @@ class DownloadWriter {
       readable.removeListener('error', handleError);
       readable.removeListener('end', handleEnd);
       readable.removeListener('close', handleClose);
+      if (this.fileStream) {
+        this.fileStream.removeListener('error', handleFileError);
+      }
+    };
+
+    const handleFileError = (err) => {
+      cleanup();
+      try { readable.destroy(); } catch {}
+      if (onError) onError(err);
     };
 
     const onData = (chunk) => {
@@ -117,6 +126,7 @@ class DownloadWriter {
       if (onEnd) onEnd();
     };
 
+    this.fileStream.once('error', handleFileError);
     readable.on('data', onData);
     readable.on('error', handleError);
     readable.on('end', handleEnd);

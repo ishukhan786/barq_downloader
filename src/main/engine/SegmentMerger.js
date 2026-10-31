@@ -91,19 +91,33 @@ class SegmentMerger {
     // Ensure destination directory exists
     fs.mkdirSync(path.dirname(mergeTempPath), { recursive: true });
 
-    // 3. Sequential streaming with backpressure
+    // 3. Sequential streaming with backpressure and comprehensive error handling
     const outStream = fs.createWriteStream(mergeTempPath, { flags: 'w', highWaterMark: 128 * 1024 });
+    let outError = null;
+    const onOutStreamError = (err) => { outError = err; };
+    outStream.on('error', onOutStreamError);
 
     try {
       for (const seg of sorted) {
+        if (outError) throw outError;
         const inStream = fs.createReadStream(seg.temporary_path, { highWaterMark: 128 * 1024 });
         await new Promise((resolve, reject) => {
-          inStream.on('error', reject);
-          inStream.on('end', resolve);
+          const cleanup = () => {
+            inStream.removeListener('error', onInError);
+            inStream.removeListener('end', onInEnd);
+            outStream.removeListener('error', onPipeOutError);
+          };
+          const onInError = (err) => { cleanup(); inStream.unpipe(outStream); reject(err); };
+          const onPipeOutError = (err) => { cleanup(); inStream.unpipe(outStream); reject(err); };
+          const onInEnd = () => { cleanup(); resolve(); };
+          inStream.once('error', onInError);
+          outStream.once('error', onPipeOutError);
+          inStream.once('end', onInEnd);
           inStream.pipe(outStream, { end: false });
         });
       }
 
+      if (outError) throw outError;
       await new Promise((resolve, reject) => {
         outStream.end((err) => (err ? reject(err) : resolve()));
       });

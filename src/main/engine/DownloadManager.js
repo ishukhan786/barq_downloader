@@ -65,12 +65,12 @@ class DownloadManager extends EventEmitter {
       this.logger.info(`Found ${unfinished.length} unfinished download(s) from previous run.`);
 
       for (const rec of unfinished) {
-        const dest = rec.destination_path;
-        const fn = rec.filename;
-        const expectedPart = rec.partial_path || path.join(dest, `${fn}.barq-part`);
+        const dest = rec.destination_path || '';
+        const fn = rec.filename || 'download';
+        const expectedPart = rec.partial_path || (dest ? path.join(dest, `${fn}.barq-part`) : null);
 
         let verifiedBytes = 0;
-        if (fs.existsSync(expectedPart)) {
+        if (expectedPart && typeof expectedPart === 'string' && fs.existsSync(expectedPart)) {
           try {
             verifiedBytes = fs.statSync(expectedPart).size;
           } catch {}
@@ -295,6 +295,7 @@ class DownloadManager extends EventEmitter {
     const existing = this.tasks.get(id);
     if (existing) {
       try { await existing.pause(); } catch {}
+      existing.removeAllListeners();
       this.tasks.delete(id);
     }
 
@@ -403,6 +404,7 @@ class DownloadManager extends EventEmitter {
       if (task.isRunning) {
         throw new Error('Pause or cancel the download before removing it.');
       }
+      task.removeAllListeners();
       this.tasks.delete(id);
     }
     const rec = this.repo.getById(id);

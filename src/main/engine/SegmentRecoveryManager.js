@@ -49,7 +49,7 @@ class SegmentRecoveryManager {
           const expectedSegBytes = seg.end_byte - seg.start_byte + 1;
           let actualDiskBytes = 0;
 
-          if (fs.existsSync(seg.temporary_path)) {
+          if (seg.temporary_path && typeof seg.temporary_path === 'string' && fs.existsSync(seg.temporary_path)) {
             try {
               actualDiskBytes = fs.statSync(seg.temporary_path).size;
             } catch {
