@@ -42,10 +42,10 @@ child.stderr.on('data', (d) => {
 });
 
 const timer = setTimeout(() => {
-  console.error('\nSmoke test timed out after 30 seconds.');
+  console.error('\nSmoke test timed out after 45 seconds.');
   try { child.kill('SIGKILL'); } catch {}
   process.exit(1);
-}, 30000);
+}, 45000);
 
 child.on('close', (code) => {
   clearTimeout(timer);

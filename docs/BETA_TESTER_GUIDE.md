@@ -33,22 +33,27 @@ BARQ Downloader provides two official Windows x64 distributions:
 - Run from any USB drive or folder without writing outside its root.
 - Stores data and downloads in a local `portable-data/` folder beside the executable.
 
+### Official Distribution Source
+Official beta releases, installers, and checksums are published exclusively on GitHub:
+**Repository:** [https://github.com/ishukhan786/barq_downloader](https://github.com/ishukhan786/barq_downloader)  
+**Releases:** [https://github.com/ishukhan786/barq_downloader/releases](https://github.com/ishukhan786/barq_downloader/releases)
+
 ---
 
 ## 3. Release Channels & Update System
 
-BARQ includes a secure, privacy-first update system integrated into **Settings -> Software Updates & Release Channel**.
+BARQ includes a secure, zero-cost update system powered by GitHub Releases and integrated into **Settings -> Software Updates & Release Channel**.
 
 ### Available Channels
 1. **Beta Channel (Default):**
-   - Receives early public beta releases, new features, and optimization experiments.
+   - Receives early public beta releases (`v0.1.0-beta.1`, etc.), new features, and optimization experiments directly from GitHub Releases.
    - Recommended for all beta testers.
 2. **Stable Channel:**
    - Reserved for production-ready, fully hardened commercial releases.
 
 ### Cryptographic Update Verification
 BARQ never executes or applies untrusted updates. Every update must satisfy:
-- **HTTPS Enforcement:** Update manifests and binary payloads are only fetched over authenticated TLS connections. Insecure HTTP or redirected links are immediately dropped.
+- **HTTPS & Redirect Security:** Update manifests and binary payloads are fetched over authenticated TLS connections. Asset redirects from `api.github.com` to `objects.githubusercontent.com` are strictly validated; insecure HTTP downgrades and untrusted external hosts are immediately dropped.
 - **Ed25519 Digital Signatures:** Release manifests are canonicalized using RFC 8785 and verified against BARQ's embedded root public keys (`trusted-keys.json`).
 - **SHA-256 Bit-for-Bit Checksum:** Every downloaded installer is hashed and compared before presentation.
 - **Downgrade & Rollback Rejection:** Manifests with version numbers lower than the currently running version are rejected as potential rollback attacks.

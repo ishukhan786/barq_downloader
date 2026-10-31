@@ -126,12 +126,13 @@ class ManifestValidator {
       throw new Error(`Unsupported manifest schema version "${manifest.schemaVersion}". Supported: [${[...SUPPORTED_SCHEMA_VERSIONS].join(', ')}].`);
     }
 
-    // 2. Product Name & Package ID
-    if (manifest.product !== EXPECTED_PRODUCT) {
+    // 2. Product Name & Package / App ID
+    if (manifest.product && manifest.product !== EXPECTED_PRODUCT) {
       throw new Error(`Manifest product mismatch: expected "${EXPECTED_PRODUCT}", got "${manifest.product}".`);
     }
-    if (manifest.packageId !== EXPECTED_PACKAGE_ID) {
-      throw new Error(`Manifest packageId mismatch: expected "${EXPECTED_PACKAGE_ID}", got "${manifest.packageId}".`);
+    const packageOrAppId = manifest.packageId || manifest.appId;
+    if (!packageOrAppId || packageOrAppId !== EXPECTED_PACKAGE_ID) {
+      throw new Error(`Manifest packageId mismatch: expected "${EXPECTED_PACKAGE_ID}", got "${packageOrAppId}".`);
     }
 
     // 3. Semantic Version
@@ -167,6 +168,24 @@ class ManifestValidator {
     }
 
     // 7. Platforms validation
+    if (!manifest.platforms && Array.isArray(manifest.artifacts)) {
+      manifest.platforms = {};
+      for (const art of manifest.artifacts) {
+        if (!art || typeof art !== 'object') continue;
+        const platKey = `${art.platform || 'win32'}-${art.arch || 'x64'}`;
+        manifest.platforms[platKey] = manifest.platforms[platKey] || {};
+        const artType = art.type === 'installer' ? 'installer' : art.type === 'portable' ? 'portable' : null;
+        if (artType) {
+          manifest.platforms[platKey][artType] = {
+            filename: art.filename,
+            sha256: art.sha256,
+            size: art.size,
+            signatureRequired: Boolean(art.signatureRequired),
+          };
+        }
+      }
+    }
+
     if (!manifest.platforms || typeof manifest.platforms !== 'object') {
       throw new Error('Manifest is missing required "platforms" object.');
     }

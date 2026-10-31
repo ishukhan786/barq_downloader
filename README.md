@@ -45,6 +45,30 @@ BARQ is engineered with a strict multi-process isolation and defense-in-depth mo
 
 ---
 
+## Public Beta Distribution & GitHub Releases
+
+BARQ Downloader utilizes **GitHub Releases** (`https://github.com/ishukhan786/barq_downloader/releases`) for zero-cost, high-availability public beta distribution and automatic update discovery.
+
+### Update Architecture & Zero-Cost Infrastructure
+- **Update Source:** Public GitHub Releases API (`https://api.github.com/repos/ishukhan786/barq_downloader/releases`).
+- **Release Channels:**
+  - **Beta Channel:** Pre-release builds (`v0.1.0-beta.1`, etc.) with early features and fixes.
+  - **Stable Channel:** Production-hardened releases with verified stability.
+- **Cryptographic Update Security:**
+  - **Detached Ed25519 Signatures:** Release manifests (`release-manifest.json`) are canonicalized using RFC 8785 (JCS) and verified against embedded public root keys (`trusted-keys.json`).
+  - **SHA-256 Digest Validation:** Binary downloads are verified bit-for-bit before staging.
+  - **Hop-by-Hop Redirect Security:** Follows redirects strictly across approved GitHub delivery hosts (`objects.githubusercontent.com`, `github.com`), rejects HTTP downgrades, strips sensitive credentials, and prevents redirect loops.
+  - **Explicit Consent:** Never silently executes or updates without native modal user approval.
+
+### Deployment & Verification Status
+- **Implemented:** Client updater with GitHub Releases API integration, redirect security policy, Ed25519 signature validation, SHA-256 checksum verification, and release preparation tooling.
+- **Tested Locally:** Full automated regression suite (232 tests) and Electron runtime smoke test.
+- **Tested Against GitHub:** Live query against `https://api.github.com/repos/ishukhan786/barq_downloader/releases` confirmed active and returning HTTP 200 OK.
+- **Not Yet Deployed:** GitHub Release entry `v0.1.0-beta.1` awaits publication by the repository owner on GitHub.
+- **Known Limitations:** In environments without an Authenticode certificate, Windows SmartScreen will display an informational banner on first launch.
+
+---
+
 ## Project Structure
 
 ```

@@ -106,7 +106,7 @@ class SignatureVerifier {
     }
 
     try {
-      activeId = activeId || this.keysData.activeKeyId;
+      activeId = activeId || (this.keysData && this.keysData.activeKeyId) || (this.keysData && Array.isArray(this.keysData.keys) && this.keysData.keys.length === 1 ? this.keysData.keys[0].id : null);
       const keyRecord = this.getKey(activeId);
 
       if (!signatureBase64 || typeof signatureBase64 !== 'string') {
