@@ -11,11 +11,11 @@ const EDGE_KEY = 'HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.bar
 
 class RegistryManager {
   static getManifestPath() {
-    return path.resolve(__dirname, 'com.barq.downloader.json');
+    return path.resolve(__dirname, 'com.barq.downloader.json').replace('app.asar', 'app.asar.unpacked');
   }
 
   static getBatPath() {
-    return path.resolve(__dirname, 'barq-native-host.bat');
+    return path.resolve(__dirname, 'barq-native-host.bat').replace('app.asar', 'app.asar.unpacked');
   }
 
   /**

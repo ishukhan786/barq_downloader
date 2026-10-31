@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.barq.downloader",
+  "productName": "BARQ Downloader",
+  "copyright": "Copyright © 2026 BARQ. All rights reserved.",
+  "directories": {
+    "output": "dist",
+    "buildResources": "assets"
+  },
+  "files": [
+    "src/**/*",
+    "assets/icons/**/*",
+    "native-host/**/*",
+    "browser-extension/**/*",
+    "package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "native-host/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "browser-extension",
+      "to": "browser-extension"
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icons/barq.ico",
+    "legalTrademarks": "BARQ (برق) — Speed at Every Click."
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "BARQ Downloader",
+    "uninstallDisplayName": "BARQ Downloader",
+    "deleteAppDataOnUninstall": false,
+    "artifactName": "BARQ-Downloader-Setup-${version}.exe"
+  },
+  "portable": {
+    "artifactName": "BARQ-Downloader-Portable-${version}.exe"
+  }
+}

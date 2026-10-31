@@ -23,9 +23,14 @@
     "smoke": "node scripts/smoke.js",
     "syntax": "node scripts/check-syntax.js",
     "icons": "electron scripts/build-icons.js",
-    "check": "npm run syntax && npm test && npm run smoke"
+    "check": "npm run syntax && npm test && npm run smoke",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis portable",
+    "dist:installer": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable"
   },
   "devDependencies": {
-    "electron": "45.2.1"
+    "electron": "45.2.1",
+    "electron-builder": "^26.18.0"
   }
 }
