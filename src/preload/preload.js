@@ -33,7 +33,12 @@ const api = {
     get: () => call('stats:get'),
   },
   downloads: {
-    list: (view, search) => call('downloads:list', { view: String(view), search: String(search || '') }),
+    list: (viewOrOpts, search) => {
+      if (typeof viewOrOpts === 'object' && viewOrOpts !== null) {
+        return call('downloads:list', { view: String(viewOrOpts.view || 'all'), search: String(viewOrOpts.search || '') });
+      }
+      return call('downloads:list', { view: String(viewOrOpts || 'all'), search: String(search || '') });
+    },
     add: (params) => call('downloads:add', params),
     probe: (url) => call('downloads:probe', String(url)),
     pause: (id) => call('downloads:pause', Number(id)),

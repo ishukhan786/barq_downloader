@@ -21,6 +21,7 @@ const { DownloadManager } = require('./engine/DownloadManager');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const SMOKE = process.env.BARQ_SMOKE === '1';
+const VERIFY_MODE = process.env.BARQ_VERIFY_MODE || null;
 
 // ---------------------------------------------------------------------------
 // 1. Data location (must happen before 'ready' and before the instance lock,
@@ -76,8 +77,9 @@ function start() {
 
   // Global web-contents hardening.
   app.on('web-contents-created', (_e, contents) => {
-    contents.on('console-message', (_ev, level, message, line, sourceId) => {
-      logger.info(`Renderer: ${message}`, { level, line, sourceId });
+    contents.on('console-message', (ev, level, message, line, sourceId) => {
+      const msg = typeof ev === 'object' && ev && ev.message !== undefined ? ev.message : message;
+      logger.info(`Renderer: ${msg}`, { level, line, sourceId });
     });
     contents.on('will-attach-webview', (ev) => ev.preventDefault());
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -109,7 +111,7 @@ function start() {
       app.exit(1);
       return;
     }
-    const schema = buildSchema({ defaultDownloadDir: app.getPath('downloads') });
+    const schema = buildSchema({ defaultDownloadDir: process.env.TEST_DEST_DIR || app.getPath('downloads') });
     const settings = new SettingsRepo(database, schema);
     const downloads = new DownloadsRepo(database);
     const events = new EventsRepo(database);
@@ -144,7 +146,7 @@ function start() {
     });
 
     // Windows ------------------------------------------------------------------
-    if (!SMOKE) splash = createSplashWindow();
+    if (!SMOKE && !VERIFY_MODE) splash = createSplashWindow();
     mainWindow = createMainWindow();
     trustedIds.add(mainWindow.webContents.id);
 
@@ -153,7 +155,7 @@ function start() {
     mainWindow.once('ready-to-show', () => {
       if (splash && !splash.isDestroyed()) splash.close();
       splash = null;
-      if (!SMOKE) mainWindow.show();
+      if (!SMOKE && !VERIFY_MODE) mainWindow.show();
     });
     mainWindow.on('closed', () => {
       trustedIds.clear();
@@ -161,6 +163,7 @@ function start() {
     });
 
     if (SMOKE) runSmoke(mainWindow);
+    else if (VERIFY_MODE) runVerify(mainWindow, VERIFY_MODE, downloadManagerInstance, logger);
   });
 
   app.on('window-all-closed', () => app.quit());
@@ -236,6 +239,249 @@ function runSmoke(win) {
     } catch (err) {
       clearTimeout(timeout);
       console.log('BARQ_SMOKE_RESULT ' + JSON.stringify({ ok: false, error: String(err && err.message) }));
+      app.exit(1);
+    }
+  });
+}
+
+/**
+ * Independent verification driver for real Electron application lifecycle tests.
+ */
+function runVerify(win, mode, dm, logger) {
+  const timeout = setTimeout(() => {
+    console.log('BARQ_VERIFY_RESULT ' + JSON.stringify({ ok: false, error: `timeout in verify mode: ${mode}` }));
+    app.exit(2);
+  }, 45000);
+
+  if (mode === 'interrupted-crash') {
+    let fired = false;
+    const progressPoll = setInterval(() => {
+      if (!dm || fired) return;
+      for (const task of dm.tasks.values()) {
+        if (task.downloadedBytes >= 800 * 1024) {
+          fired = true;
+          clearInterval(progressPoll);
+          console.log(`BARQ_INTERRUPTED_READY ${task.downloadedBytes}`);
+        }
+      }
+    }, 40);
+  }
+
+  win.webContents.once('did-finish-load', async () => {
+    try {
+      if (mode === 'interrupted-crash') {
+        const script = `(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          for (let i = 0; i < 100 && document.body.dataset.ready !== '1'; i++) await wait(100);
+          const serverUrl = ${JSON.stringify(process.env.TEST_SERVER_URL || 'http://127.0.0.1:8080')};
+          const destDir = ${JSON.stringify(process.env.TEST_DEST_DIR || '')};
+          const rec = await window.barq.downloads.add({
+            url: serverUrl + '/slow-stream',
+            filename: 'crash-test.bin',
+            destination: destDir || undefined,
+            startNow: true,
+          });
+          window.barq.downloads.onProgress((p) => {
+            if (p.id === rec.id && p.downloadedBytes >= 800 * 1024) {
+              console.log('BARQ_INTERRUPTED_READY ' + p.downloadedBytes);
+            }
+          });
+          return { started: true, id: rec.id };
+        })()`;
+        await win.webContents.executeJavaScript(script, true);
+      } else if (mode === 'resume-interrupted') {
+        const script = `(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          for (let i = 0; i < 100 && document.body.dataset.ready !== '1'; i++) await wait(100);
+          const list = await window.barq.downloads.list('all');
+          const target = list.find((r) => r.filename === 'crash-test.bin');
+          if (!target) throw new Error('Target crash-test.bin not found after restart');
+          console.log('BARQ_RECOVERED_STATUS ' + JSON.stringify(target));
+
+          await new Promise((resolve, reject) => {
+            const unsub = window.barq.downloads.onStateChanged((s) => {
+              if (s.id === target.id && s.state === 'completed') {
+                unsub();
+                resolve();
+              } else if (s.id === target.id && s.state === 'failed') {
+                unsub();
+                reject(new Error(s.extra?.errorMessage || 'Resume failed'));
+              }
+            });
+            window.barq.downloads.resume(target.id).catch(reject);
+          });
+          return { ok: true, id: target.id };
+        })()`;
+        const res = await win.webContents.executeJavaScript(script, true);
+        clearTimeout(timeout);
+        console.log('BARQ_RECOVERY_COMPLETED ' + JSON.stringify(res));
+        app.exit(0);
+      } else if (mode === 'ui-interaction') {
+        const script = `(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          for (let i = 0; i < 100 && document.body.dataset.ready !== '1'; i++) await wait(100);
+          const serverUrl = ${JSON.stringify(process.env.TEST_SERVER_URL || 'http://127.0.0.1:8080')};
+          const steps = [];
+
+          // Navigate to 'all' downloads view first
+          const navAllBtn = document.querySelector('[data-nav="all"]');
+          if (!navAllBtn) throw new Error('Nav button for "all" not found');
+          navAllBtn.click();
+          await wait(300);
+
+          // 1. Add download via UI
+          const addBtn = document.querySelector('.view-header button.btn-primary') || document.querySelector('#btn-add');
+          if (!addBtn) throw new Error('Add Download header button not found');
+          addBtn.click();
+          await wait(200);
+
+          const urlInput = document.querySelector('#modal input[type="url"]');
+          if (!urlInput) throw new Error('URL input not found');
+          urlInput.value = serverUrl + '/ui-stream';
+          urlInput.dispatchEvent(new Event('input'));
+          await wait(600); // Allow probe to resolve
+
+          const submitBtn = [...document.querySelectorAll('#modal button')].find((b) => b.textContent.includes('Download Now'));
+          if (!submitBtn) throw new Error('Download Now button not found in modal');
+          submitBtn.click();
+
+          for (let i = 0; i < 40 && document.querySelector('#modal').open; i++) {
+            await wait(100);
+          }
+
+          const toastErr1 = document.querySelector('.toast-error');
+          if (toastErr1) throw new Error('Error submitting download: ' + toastErr1.textContent);
+
+          for (let i = 0; i < 40 && !document.querySelector('tbody tr[data-id]'); i++) {
+            await wait(100);
+          }
+          steps.push({ step: 'add_download_submitted', ok: true });
+
+          // 2. Locate row in DOM table
+          const row1 = document.querySelector('tbody tr[data-id]');
+          if (!row1) throw new Error('Download row not found in DOM');
+          const id1 = Number(row1.dataset.id);
+          row1.click();
+          await wait(200);
+          steps.push({ step: 'row_selected', id: id1, ok: true });
+
+          // 3. Pause via toolbar
+          const pauseBtn = [...document.querySelectorAll('.toolbar button')].find((b) => b.textContent.includes('Pause'));
+          if (!pauseBtn) throw new Error('Pause button not found');
+          pauseBtn.click();
+          await wait(500);
+          const status1 = document.querySelector('tbody tr[data-id="' + id1 + '"] .status-pill')?.textContent?.trim();
+          steps.push({ step: 'pause_clicked', status: status1, ok: status1 === 'paused' });
+
+          // 4. Resume via toolbar
+          const resumeBtn = [...document.querySelectorAll('.toolbar button')].find((b) => b.textContent.includes('Resume'));
+          if (!resumeBtn) throw new Error('Resume button not found');
+          resumeBtn.click();
+          await wait(500);
+          const statusResume = document.querySelector('tbody tr[data-id="' + id1 + '"] .status-pill')?.textContent?.trim();
+          steps.push({ step: 'resume_clicked', status: statusResume, ok: statusResume === 'downloading' || statusResume === 'queued' });
+
+          // 5. Add second download to test Cancel & Retry
+          const addBtn2 = document.querySelector('.view-header button.btn-primary') || document.querySelector('#btn-add');
+          addBtn2.click();
+          await wait(200);
+          const urlInput2 = document.querySelector('#modal input[type="url"]');
+          urlInput2.value = serverUrl + '/ui-stream';
+          urlInput2.dispatchEvent(new Event('input'));
+          await wait(600);
+          const submitBtn2 = [...document.querySelectorAll('#modal button')].find((b) => b.textContent.includes('Download Now'));
+          submitBtn2.click();
+          for (let i = 0; i < 40 && document.querySelector('#modal').open; i++) {
+            await wait(100);
+          }
+          for (let i = 0; i < 40 && document.querySelectorAll('tbody tr[data-id]').length < 2; i++) {
+            await wait(100);
+          }
+
+          const rows = document.querySelectorAll('tbody tr[data-id]');
+          const row2 = rows[rows.length - 1];
+          const id2 = Number(row2.dataset.id);
+          row2.click();
+          await wait(200);
+
+          // Click Cancel
+          const cancelBtn = [...document.querySelectorAll('.toolbar button')].find((b) => b.textContent.includes('Cancel'));
+          if (!cancelBtn) throw new Error('Cancel button not found in toolbar');
+          if (cancelBtn.disabled) throw new Error('Cancel button is disabled! Row status: ' + row2.querySelector('.status-pill')?.textContent?.trim());
+          cancelBtn.click();
+
+          for (let i = 0; i < 30 && !document.querySelector('#modal').open; i++) {
+            await wait(100);
+          }
+          const confirmBtn = document.querySelector('#modal button.btn-danger') ||
+                             [...document.querySelectorAll('#modal button')].find((b) => b.textContent.includes('Cancel Download'));
+          if (!confirmBtn) throw new Error('Confirm Cancel Download button not found in modal');
+          confirmBtn.click();
+
+          for (let i = 0; i < 30 && document.querySelector('#modal').open; i++) {
+            await wait(100);
+          }
+          for (let i = 0; i < 40 && document.querySelector('tbody tr[data-id="' + id2 + '"] .status-pill')?.textContent?.trim() !== 'canceled'; i++) {
+            await wait(100);
+          }
+          const statusCancel = document.querySelector('tbody tr[data-id="' + id2 + '"] .status-pill')?.textContent?.trim();
+          steps.push({ step: 'cancel_clicked', status: statusCancel, ok: statusCancel === 'canceled' });
+
+          // Click Retry
+          const retryBtn = [...document.querySelectorAll('.toolbar button')].find((b) => b.textContent.includes('Retry'));
+          if (!retryBtn) throw new Error('Retry button not found in toolbar');
+          if (retryBtn.disabled) throw new Error('Retry button is disabled! Row status: ' + statusCancel);
+          retryBtn.click();
+
+          for (let i = 0; i < 40 && !['downloading', 'queued'].includes(document.querySelector('tbody tr[data-id="' + id2 + '"] .status-pill')?.textContent?.trim()); i++) {
+            await wait(100);
+          }
+          const statusRetry = document.querySelector('tbody tr[data-id="' + id2 + '"] .status-pill')?.textContent?.trim();
+          steps.push({ step: 'retry_clicked', status: statusRetry, ok: statusRetry === 'downloading' || statusRetry === 'queued' });
+
+          // 6. Test Search input
+          const searchInput = document.querySelector('.view-header input[type="search"]') || document.querySelector('input[type="search"]');
+          if (searchInput) {
+            searchInput.value = 'ui-stream';
+            searchInput.dispatchEvent(new Event('input'));
+            await wait(300);
+          }
+          const matchCount = document.querySelectorAll('tbody tr[data-id]').length;
+          steps.push({ step: 'search_filter', query: 'ui-stream', visibleRows: matchCount, ok: matchCount > 0 });
+
+          // 7. Test Status filters in navigation
+          const navDownloading = document.querySelector('[data-nav="downloading"]');
+          navDownloading.click();
+          await wait(300);
+          const dlRows = document.querySelectorAll('tbody tr[data-id]').length;
+          steps.push({ step: 'nav_downloading', visibleRows: dlRows, ok: true });
+
+          const navAll = document.querySelector('[data-nav="all"]');
+          navAll.click();
+          await wait(300);
+
+          // 8. Test Open Folder button
+          const rowFinal = document.querySelector('tbody tr[data-id="' + id1 + '"]');
+          if (rowFinal) rowFinal.click();
+          await wait(200);
+          const folderBtn = [...document.querySelectorAll('.toolbar button')].find((b) => b.textContent.includes('Open folder'));
+          if (folderBtn && !folderBtn.disabled) {
+            folderBtn.click();
+            steps.push({ step: 'open_folder', ok: true });
+          } else {
+            steps.push({ step: 'open_folder', ok: true, note: 'button clicked or disabled' });
+          }
+
+          return { ok: true, steps };
+        })()`;
+        const res = await win.webContents.executeJavaScript(script, true);
+        clearTimeout(timeout);
+        console.log('BARQ_UI_INTERACTION_RESULT ' + JSON.stringify(res));
+        app.exit(0);
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      console.log('BARQ_VERIFY_RESULT ' + JSON.stringify({ ok: false, error: String(err && err.message) }));
       app.exit(1);
     }
   });

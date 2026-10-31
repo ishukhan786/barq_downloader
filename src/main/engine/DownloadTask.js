@@ -187,6 +187,12 @@ class DownloadTask extends EventEmitter {
         this.logger.info(`Task #${this.id} restart triggered: ${resumeEval.reason}`);
         openInAppendMode = false;
         this.downloadedBytes = 0;
+        if (headers['content-length']) {
+          const cl = Number.parseInt(headers['content-length'], 10);
+          if (!Number.isNaN(cl)) {
+            this.totalBytes = cl;
+          }
+        }
       } else if (resumeEval.action === 'complete') {
         response.resume();
         await this._handleCompletion();

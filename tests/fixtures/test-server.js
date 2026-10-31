@@ -276,6 +276,14 @@ function createTestServer() {
 
     // 9. Drop midway connection
     if (pathname === '/drop-midway') {
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': smallBuffer.length,
+          'Accept-Ranges': 'bytes',
+        });
+        return res.end();
+      }
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': smallBuffer.length,
@@ -290,6 +298,13 @@ function createTestServer() {
 
     // 10. Server ignores Range header and returns 200 with full content
     if (pathname === '/range-ignored') {
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': smallBuffer.length,
+        });
+        return res.end();
+      }
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': smallBuffer.length,
@@ -299,6 +314,14 @@ function createTestServer() {
 
     // 11. Invalid Content-Range header
     if (pathname === '/invalid-range') {
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': 100,
+          'Accept-Ranges': 'bytes',
+        });
+        return res.end();
+      }
       res.writeHead(206, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': 100,
@@ -322,6 +345,17 @@ function createTestServer() {
 
     // 13. Slow streaming file (for pause/cancel testing)
     if (pathname === '/slow-stream') {
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': largeBuffer.length,
+          'Accept-Ranges': 'bytes',
+          'ETag': `"${largeHash}"`,
+          'Content-Disposition': 'attachment; filename="slow-stream.bin"',
+        });
+        return res.end();
+      }
+
       let start = 0;
       let end = largeBuffer.length - 1;
       const range = req.headers['range'];
@@ -342,6 +376,7 @@ function createTestServer() {
           'Content-Range': `bytes ${start}-${end}/${largeBuffer.length}`,
           'Accept-Ranges': 'bytes',
           'ETag': `"${largeHash}"`,
+          'Content-Disposition': 'attachment; filename="slow-stream.bin"',
         });
       } else {
         res.writeHead(200, {
@@ -349,6 +384,7 @@ function createTestServer() {
           'Content-Length': largeBuffer.length,
           'Accept-Ranges': 'bytes',
           'ETag': `"${largeHash}"`,
+          'Content-Disposition': 'attachment; filename="slow-stream.bin"',
         });
       }
 
@@ -364,6 +400,70 @@ function createTestServer() {
         offset = next;
         res.write(slice);
       }, 20);
+
+      req.on('close', () => {
+        clearInterval(interval);
+      });
+      return;
+    }
+
+    // 13b. Dedicated UI test stream (10 MB streamed at 32 KB / 40ms, total ~12 seconds)
+    if (pathname === '/ui-stream') {
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': buf10mb.length,
+          'Accept-Ranges': 'bytes',
+          'ETag': `"${hash10mb}"`,
+          'Content-Disposition': 'attachment; filename="ui-stream.bin"',
+        });
+        return res.end();
+      }
+
+      let start = 0;
+      let end = buf10mb.length - 1;
+      const range = req.headers['range'];
+      const isRange = !!range;
+
+      if (range) {
+        const match = /^bytes=(\d+)-(\d+)?$/i.exec(range);
+        if (match) {
+          start = Number.parseInt(match[1], 10);
+          if (match[2]) end = Number.parseInt(match[2], 10);
+        }
+      }
+
+      if (isRange) {
+        res.writeHead(206, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': end - start + 1,
+          'Content-Range': `bytes ${start}-${end}/${buf10mb.length}`,
+          'Accept-Ranges': 'bytes',
+          'ETag': `"${hash10mb}"`,
+          'Content-Disposition': 'attachment; filename="ui-stream.bin"',
+        });
+      } else {
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': buf10mb.length,
+          'Accept-Ranges': 'bytes',
+          'ETag': `"${hash10mb}"`,
+          'Content-Disposition': 'attachment; filename="ui-stream.bin"',
+        });
+      }
+
+      let offset = start;
+      const chunkSize = 32 * 1024;
+      const interval = setInterval(() => {
+        if (offset > end) {
+          clearInterval(interval);
+          return res.end();
+        }
+        const next = Math.min(offset + chunkSize, end + 1);
+        const slice = buf10mb.subarray(offset, next);
+        offset = next;
+        res.write(slice);
+      }, 40);
 
       req.on('close', () => {
         clearInterval(interval);

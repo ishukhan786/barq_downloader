@@ -127,7 +127,16 @@ class BarqApp {
       liveStats: this.liveStats,
       refreshStats: () => this.refreshStats(),
       navigate: (v) => this.navigate(v),
-      openAddDownload: () => showAddDownloadDialog(ctx),
+      openAddDownload: async () => {
+        const record = await showAddDownloadDialog(ctx);
+        if (record) {
+          if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
+            await this.currentViewInstance.refresh();
+          }
+          await this.refreshStats();
+        }
+        return record;
+      },
       setSearch: (term) => this.setSearch(term),
     };
 
@@ -166,12 +175,18 @@ class BarqApp {
     // Global add button
     const addBtn = $('#btn-add');
     if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        showAddDownloadDialog({
+      addBtn.addEventListener('click', async () => {
+        const record = await showAddDownloadDialog({
           api: this.api,
           state: this.state,
           refreshStats: () => this.refreshStats(),
         });
+        if (record) {
+          if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
+            await this.currentViewInstance.refresh();
+          }
+          await this.refreshStats();
+        }
       });
     }
 
