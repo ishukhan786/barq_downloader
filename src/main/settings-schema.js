@@ -34,6 +34,7 @@ function buildSchema({ defaultDownloadDir }) {
     confirmBrowserDownloads:{ default: true, validate: bool, rendererWritable: true },
     videoEngineDir:         { default: '', validate: absPathOrEmpty, rendererWritable: false },
     deletePartialOnCancel:  { default: false, validate: bool, rendererWritable: true },
+    updateChannel:          { default: 'beta', validate: oneOf('beta', 'stable'), rendererWritable: true },
   };
 }
 

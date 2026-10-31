@@ -27,7 +27,13 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis portable",
     "dist:installer": "electron-builder --win nsis",
-    "dist:portable": "electron-builder --win portable"
+    "dist:portable": "electron-builder --win portable",
+    "release:clean": "node -e \"const fs=require('fs'); fs.rmSync('release', {recursive:true,force:true});\"",
+    "release:verify": "npm run check",
+    "release:build": "npm run dist",
+    "release:manifest": "node scripts/generate-manifest.js",
+    "release:checksums": "node scripts/generate-manifest.js",
+    "release:package": "npm run release:verify && npm run release:build && npm run release:manifest"
   },
   "devDependencies": {
     "electron": "45.2.1",

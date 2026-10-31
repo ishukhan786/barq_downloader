@@ -21,6 +21,7 @@ const { buildSchema } = require('./settings-schema');
 const { registerIpc, applyTheme } = require('./ipc');
 const { DownloadManager } = require('./engine/DownloadManager');
 const { NativePipeServer } = require('./native-pipe-server');
+const { UpdateService } = require('./updater/UpdateService');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const SMOKE = process.env.BARQ_SMOKE === '1';
@@ -155,10 +156,22 @@ function start() {
       logger.error('Failed to start NativePipeServer:', err);
     });
 
+    const updateService = new UpdateService({
+      channel: settings.get('updateChannel') || 'beta',
+      currentVersion: app.getVersion() || brand.VERSION || '0.1.0',
+      stagingDir: path.join(layout.dataDir, 'update-staging'),
+      broadcast: (channel, payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(channel, payload);
+        }
+      },
+      logger,
+    });
+
     registerIpc({
       database, settings, downloads, events, feedback, layout, dataInfo, logger,
       getMainWindow: () => mainWindow, trustedIds, engineState, downloadManager,
-      pipeServer,
+      pipeServer, updateService,
     });
 
     // Windows ------------------------------------------------------------------

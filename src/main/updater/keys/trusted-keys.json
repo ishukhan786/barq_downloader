@@ -1,0 +1,13 @@
+{
+  "activeKeyId": "barq-beta-2026-k1",
+  "keys": [
+    {
+      "id": "barq-beta-2026-k1",
+      "algorithm": "ed25519",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA/iDRH4qJlVwqJ2o+Sut/3dXXJnx1h594P3q5DNUyBbA=\n-----END PUBLIC KEY-----\n",
+      "validFrom": "2026-10-01T00:00:00Z",
+      "validUntil": "2028-10-01T00:00:00Z",
+      "description": "BARQ Beta Channel Root Verification Key 2026"
+    }
+  ]
+}

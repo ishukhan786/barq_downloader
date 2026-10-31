@@ -60,6 +60,11 @@ const CHANNELS = Object.freeze([
   'feedback:getDiagnosticPreview',
   'feedback:exportJson',
   'feedback:exportZip',
+  'updater:getStatus',
+  'updater:checkForUpdates',
+  'updater:downloadUpdate',
+  'updater:installUpdate',
+  'updater:cancelUpdate',
 ]);
 
 function dirStats(dir) {
@@ -112,7 +117,7 @@ function applyAutoStart(enabled, logger) {
  * @param {{ overallSpeedBps: number, activeTransfers: number }} ctx.engineState
  */
 function registerIpc(ctx) {
-  const { database, settings, downloads, events, layout, dataInfo, logger, getMainWindow, trustedIds, engineState, downloadManager } = ctx;
+  const { database, settings, downloads, events, layout, dataInfo, logger, getMainWindow, trustedIds, engineState, downloadManager, pipeServer, updateService } = ctx;
 
   const broadcast = (channel, payload) => {
     const win = getMainWindow();
@@ -564,6 +569,31 @@ function registerIpc(ctx) {
     }
 
     return { canceled: false, path: res.path, bytes: res.bytes, filesCount: res.filesCount };
+  });
+
+  // -------------------------------------------------------------------------
+  // Updater Handlers (Milestone 8 Secure Update Infrastructure)
+  // -------------------------------------------------------------------------
+  handle('updater:getStatus', async () => {
+    return updateService ? updateService.getStatus() : { state: 'idle' };
+  });
+
+  handle('updater:checkForUpdates', async (opts) => {
+    return updateService ? updateService.checkForUpdates(opts || {}) : { state: 'idle' };
+  });
+
+  handle('updater:downloadUpdate', async (opts) => {
+    return updateService ? updateService.downloadUpdate(opts || {}) : { state: 'idle' };
+  });
+
+  handle('updater:installUpdate', async () => {
+    return updateService
+      ? updateService.installUpdate({ onBeforeQuit: () => app.quit() })
+      : { success: false, error: 'UpdateService not initialized' };
+  });
+
+  handle('updater:cancelUpdate', async () => {
+    return updateService ? updateService.cancelUpdate() : { state: 'idle' };
   });
 
   return { applyTheme, applyAutoStart };

@@ -16,7 +16,12 @@ async function call(channel, arg) {
   return res.data;
 }
 
-const EVENT_CHANNELS = new Set(['settings:changed', 'download:progress', 'download:state-changed']);
+const EVENT_CHANNELS = new Set([
+  'settings:changed',
+  'download:progress',
+  'download:state-changed',
+  'updater:status-changed',
+]);
 
 function subscribe(channel, callback) {
   if (!EVENT_CHANNELS.has(channel) || typeof callback !== 'function') return () => {};
@@ -91,6 +96,14 @@ const api = {
     getDiagnosticPreview: (opts) => call('feedback:getDiagnosticPreview', opts || {}),
     exportJson: (idOrOpts) => call('feedback:exportJson', idOrOpts),
     exportZip: (idOrOpts) => call('feedback:exportZip', idOrOpts),
+  },
+  updater: {
+    getStatus: () => call('updater:getStatus'),
+    checkForUpdates: (opts) => call('updater:checkForUpdates', opts || {}),
+    downloadUpdate: () => call('updater:downloadUpdate'),
+    installUpdate: () => call('updater:installUpdate'),
+    cancelUpdate: () => call('updater:cancelUpdate'),
+    onStatusChanged: (cb) => subscribe('updater:status-changed', cb),
   },
 };
 

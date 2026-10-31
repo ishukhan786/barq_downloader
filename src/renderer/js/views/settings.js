@@ -8,6 +8,7 @@ export function renderSettings(root, ctx) {
   let dbInfo = {};
   let tempInfo = {};
   let browserInfo = {};
+  let updateInfo = { state: 'idle' };
   let disposed = false;
 
   const container = h('div', { class: 'settings' });
@@ -333,31 +334,164 @@ export function renderSettings(root, ctx) {
       tempFilesRow,
       dbRow);
 
-    container.append(genCard, dlCard, browserCard, storageCard);
+    // Section 5: Software Updates & Beta Channel (Milestone 8)
+    const channelRow = h('div', { class: 'setting-row' },
+      h('div', { class: 'setting-text' },
+        h('span', { class: 'label', text: 'Release Channel' }),
+        h('small', { text: settings.updateChannel === 'stable' ? 'Stable channel (production releases)' : 'Beta channel (early public beta releases)' })),
+      h('div', { class: 'setting-control' },
+        h('div', { class: 'segmented', role: 'group', 'aria-label': 'Release channel' },
+          ...['beta', 'stable'].map((ch) =>
+            h('button', {
+              type: 'button',
+              'aria-pressed': (settings.updateChannel || 'beta') === ch ? 'true' : 'false',
+              text: ch[0].toUpperCase() + ch.slice(1),
+              onclick: async () => {
+                if (settings.updateChannel !== ch) {
+                  const ok = await confirmDialog({
+                    title: `Switch to ${ch[0].toUpperCase() + ch.slice(1)} Channel?`,
+                    message: ch === 'stable'
+                      ? 'Stable channel provides tested production builds once officially released.'
+                      : 'Beta channel provides the latest public beta releases with new features.',
+                    confirmLabel: `Switch to ${ch[0].toUpperCase() + ch.slice(1)}`,
+                  });
+                  if (ok) updateSetting({ updateChannel: ch });
+                }
+              },
+            })))));
+
+    const currentChannel = settings.updateChannel || 'beta';
+    let statusText = 'Click "Check for Updates" to connect to the secure release server.';
+    let statusBadgeClass = 'badge-muted';
+    let statusBadgeText = 'Idle';
+
+    if (updateInfo.state === 'checking') {
+      statusText = 'Contacting secure HTTPS release endpoint…';
+      statusBadgeClass = 'badge-warn';
+      statusBadgeText = 'Checking…';
+    } else if (updateInfo.state === 'verifying-manifest') {
+      statusText = 'Verifying Ed25519 digital signature and canonical release manifest…';
+      statusBadgeClass = 'badge-warn';
+      statusBadgeText = 'Verifying Signature';
+    } else if (updateInfo.state === 'no-update') {
+      statusText = `BARQ Downloader v${updateInfo.currentVersion || '0.1.0'} is up to date on the ${currentChannel} channel.`;
+      statusBadgeClass = 'badge-ok';
+      statusBadgeText = 'Up to Date';
+    } else if (updateInfo.state === 'update-available') {
+      statusText = `Version v${updateInfo.availableVersion} is available! (Published: ${updateInfo.publishedAt ? new Date(updateInfo.publishedAt).toLocaleDateString() : 'recent'}, Size: ${updateInfo.artifactSize ? formatBytes(updateInfo.artifactSize) : 'N/A'})`;
+      statusBadgeClass = 'badge-accent';
+      statusBadgeText = `New: v${updateInfo.availableVersion}`;
+    } else if (updateInfo.state === 'downloading') {
+      statusText = `Downloading update… ${formatBytes(updateInfo.downloadProgress?.downloadedBytes || 0)} of ${formatBytes(updateInfo.downloadProgress?.totalBytes || 0)} (${updateInfo.downloadProgress?.percent || 0}%)`;
+      statusBadgeClass = 'badge-accent';
+      statusBadgeText = `${updateInfo.downloadProgress?.percent || 0}%`;
+    } else if (updateInfo.state === 'verifying-artifact') {
+      statusText = 'Verifying cryptographic SHA-256 checksum and Authenticode digital signature…';
+      statusBadgeClass = 'badge-warn';
+      statusBadgeText = 'Verifying Hash';
+    } else if (updateInfo.state === 'ready-to-install') {
+      statusText = `Update v${updateInfo.availableVersion} is verified and ready to install. Click "Install & Restart" to proceed.`;
+      statusBadgeClass = 'badge-ok';
+      statusBadgeText = 'Ready to Install';
+    } else if (updateInfo.state === 'failed') {
+      statusText = `Update check failed: ${updateInfo.error || 'Server connection error'}`;
+      statusBadgeClass = 'badge-danger';
+      statusBadgeText = 'Error';
+    }
+
+    const updateControls = [];
+    if (updateInfo.state === 'update-available') {
+      updateControls.push(h('button', {
+        class: 'btn btn-sm btn-primary',
+        type: 'button',
+        onclick: async () => {
+          await guard(ctx.api.updater.downloadUpdate());
+        },
+      }, icon('download'), 'Download Update'));
+    } else if (updateInfo.state === 'ready-to-install') {
+      updateControls.push(h('button', {
+        class: 'btn btn-sm btn-primary',
+        type: 'button',
+        onclick: async () => {
+          const ok = await confirmDialog({
+            title: `Install BARQ Downloader v${updateInfo.availableVersion}?`,
+            message: 'The update is cryptographically verified and ready. The application will close and run the verified installer.',
+            confirmLabel: 'Install & Restart',
+          });
+          if (ok) {
+            await ctx.api.updater.installUpdate();
+          }
+        },
+      }, icon('check'), 'Install & Restart'));
+    }
+
+    updateControls.push(h('button', {
+      class: 'btn btn-sm',
+      type: 'button',
+      onclick: async () => {
+        const res = await guard(ctx.api.updater.checkForUpdates({ channel: currentChannel }));
+        if (res) {
+          updateInfo = res;
+          render();
+        }
+      },
+    }, icon('retry'), 'Check for Updates'));
+
+    const updateStatusRow = h('div', { class: 'setting-row' },
+      h('div', { class: 'setting-text' },
+        h('div', { class: 'setting-badges' },
+          h('span', { class: `badge ${statusBadgeClass}`, text: statusBadgeText }),
+          updateInfo.state === 'ready-to-install' ? h('span', { class: 'badge badge-ok', text: '✓ Ed25519 Verified' }) : '',
+          updateInfo.state === 'ready-to-install' ? h('span', { class: 'badge badge-ok', text: '✓ SHA-256 Verified' }) : '',
+        ),
+        h('small', { text: statusText })),
+      h('div', { class: 'setting-control' }, ...updateControls));
+
+    const updateCard = h('div', { class: 'card settings-section' },
+      h('h2', { text: 'Software Updates & Release Channel' }),
+      h('p', { class: 'section-sub', text: 'Secure cryptographic update verification, channel selection, and installation.' }),
+      channelRow,
+      updateStatusRow);
+
+    container.append(genCard, dlCard, browserCard, storageCard, updateCard);
   }
 
   async function refresh() {
     try {
-      const [s, db, temp, browser] = await Promise.all([
+      const [s, db, temp, browser, upd] = await Promise.all([
         ctx.api.settings.get(),
         ctx.api.database.info(),
         ctx.api.temp.info(),
         ctx.api.browser ? ctx.api.browser.getStatus() : Promise.resolve({}),
+        ctx.api.updater ? ctx.api.updater.getStatus() : Promise.resolve({ state: 'idle' }),
       ]);
       if (disposed) return;
       settings = s;
       dbInfo = db;
       tempInfo = temp;
       browserInfo = browser || {};
+      updateInfo = upd || { state: 'idle' };
       render();
     } catch (err) {
       if (!disposed) toast(err.message, 'error');
     }
   }
 
+  let unsubUpdater = null;
+  if (ctx.api.updater && typeof ctx.api.updater.onStatusChanged === 'function') {
+    unsubUpdater = ctx.api.updater.onStatusChanged((status) => {
+      if (disposed) return;
+      updateInfo = status;
+      render();
+    });
+  }
+
   refresh();
   return {
     refresh,
-    dispose() { disposed = true; },
+    dispose() {
+      disposed = true;
+      if (unsubUpdater) try { unsubUpdater(); } catch {}
+    },
   };
 }

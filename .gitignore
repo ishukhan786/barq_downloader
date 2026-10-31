@@ -5,10 +5,20 @@ node_modules/
 dev-data/
 portable-data/
 test-data/
+backups/
 *.db
 *.db-wal
 *.db-shm
 *.log
+
+# Signing keys and certificates — NEVER commit
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+*.crt
+secring.*
 
 # Build output
 dist/
