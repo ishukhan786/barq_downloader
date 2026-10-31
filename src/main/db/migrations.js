@@ -92,6 +92,22 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 3,
+    name: 'multi_segment_engine',
+    up(db) {
+      db.exec(`
+        ALTER TABLE downloads ADD COLUMN is_segmented INTEGER NOT NULL DEFAULT 0 CHECK (is_segmented IN (0, 1));
+        ALTER TABLE downloads ADD COLUMN segment_count INTEGER NOT NULL DEFAULT 1 CHECK (segment_count >= 1);
+        ALTER TABLE downloads ADD COLUMN fallback_reason TEXT;
+        ALTER TABLE segments ADD COLUMN error_code TEXT;
+        ALTER TABLE segments ADD COLUMN error_message TEXT;
+        ALTER TABLE segments ADD COLUMN etag TEXT;
+        ALTER TABLE segments ADD COLUMN last_modified TEXT;
+        ALTER TABLE segments ADD COLUMN updated_at INTEGER;
+      `);
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);

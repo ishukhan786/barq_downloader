@@ -4,6 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const EventEmitter = require('node:events');
 const { DownloadTask } = require('./DownloadTask');
+const { SegmentedDownloadTask } = require('./SegmentedDownloadTask');
+const { SegmentPlanner } = require('./SegmentPlanner');
+const { RangeSupportDetector } = require('./RangeSupportDetector');
+const { SegmentRecoveryManager } = require('./SegmentRecoveryManager');
+const { SegmentsRepo } = require('../db/segments-repo');
 const { HttpClient } = require('./HttpClient');
 const { FilenameResolver } = require('./FilenameResolver');
 const { categorize } = require('../../shared/categories');
@@ -28,8 +33,9 @@ class DownloadManager extends EventEmitter {
     this.events = eventsRepo;
     this.logger = logger;
     this.broadcast = broadcast || (() => {});
+    this.segmentsRepo = new SegmentsRepo(downloadsRepo.database);
 
-    this.tasks = new Map(); // id -> DownloadTask
+    this.tasks = new Map(); // id -> DownloadTask | SegmentedDownloadTask
   }
 
   /**
@@ -38,6 +44,12 @@ class DownloadManager extends EventEmitter {
    */
   async init() {
     this.logger.info('Initializing BARQ Download Manager...');
+    await SegmentRecoveryManager.recover({
+      downloadsRepo: this.repo,
+      segmentsRepo: this.segmentsRepo,
+      eventsRepo: this.events,
+      logger: this.logger,
+    });
     await this.recoverInterrupted();
   }
 
@@ -133,6 +145,42 @@ class DownloadManager extends EventEmitter {
     const cat = categorize(finalName);
     const partPath = path.join(dest, `${finalName}.barq-part`);
 
+    // Evaluate segmentation eligibility
+    const autoSeg = this.settings.get('autoSegmentation') !== false;
+    const connPerFile = this.settings.get('connectionsPerFile') || 8;
+    const minSegSize = this.settings.get('minSegmentSize') || 1048576;
+
+    let isSegmented = 0;
+    let segmentCount = 1;
+    let fallbackReason = null;
+    let detectedTotal = null;
+    let detectedEtag = null;
+    let detectedLastMod = null;
+    let supportsRanges = 0;
+
+    if (autoSeg) {
+      try {
+        const probeRes = await RangeSupportDetector.detect(sourceUrl, {
+          minSegmentSize: minSegSize,
+          autoSegmentation: autoSeg,
+        });
+
+        if (probeRes.isEligible && probeRes.totalBytes) {
+          isSegmented = 1;
+          detectedTotal = probeRes.totalBytes;
+          detectedEtag = probeRes.etag;
+          detectedLastMod = probeRes.lastModified;
+          supportsRanges = 1;
+        } else {
+          fallbackReason = probeRes.reason;
+          if (probeRes.supportsRanges) supportsRanges = 1;
+          if (probeRes.totalBytes) detectedTotal = probeRes.totalBytes;
+        }
+      } catch (err) {
+        fallbackReason = `Probe failed: ${err.message}`;
+      }
+    }
+
     // Insert to DB
     const id = this.repo.insert({
       source_url: sourceUrl,
@@ -141,13 +189,48 @@ class DownloadManager extends EventEmitter {
       status: 'queued',
       category: cat,
       partial_path: partPath,
+      total_bytes: detectedTotal,
+      etag: detectedEtag,
+      last_modified: detectedLastMod,
+      supports_ranges: supportsRanges,
+      is_segmented: isSegmented,
+      segment_count: segmentCount,
+      fallback_reason: fallbackReason,
     });
+
+    if (isSegmented === 1 && detectedTotal) {
+      try {
+        const plan = SegmentPlanner.plan({
+          downloadId: id,
+          totalBytes: detectedTotal,
+          connectionCount: connPerFile,
+          minSegmentSize: minSegSize,
+          destinationPath: dest,
+          filename: finalName,
+          etag: detectedEtag,
+          lastModified: detectedLastMod,
+        });
+
+        this.segmentsRepo.insertBatch(plan.segments);
+        this.repo.updateSegmentedInfo(id, {
+          is_segmented: 1,
+          segment_count: plan.segmentCount,
+        });
+      } catch (planErr) {
+        this.logger.warn(`Segment planning failed for #${id}, falling back: ${planErr.message}`);
+        this.repo.updateSegmentedInfo(id, {
+          is_segmented: 0,
+          segment_count: 1,
+          fallback_reason: `Segment planning failed: ${planErr.message}`,
+        });
+      }
+    }
 
     const record = this.repo.getById(id);
     this.events.add({
       downloadId: id,
       type: 'added',
-      message: `Added "${finalName}" to downloads (${startNow ? 'downloading' : 'queued'})`,
+      message: `Added "${finalName}" to downloads (${startNow ? 'downloading' : 'queued'}${record.is_segmented ? `, ${record.segment_count} segments` : ''})`,
     });
 
     const task = this._createTask(record);
@@ -160,19 +243,36 @@ class DownloadManager extends EventEmitter {
   }
 
   /**
-   * Internal factory for DownloadTask.
+   * Internal factory for DownloadTask or SegmentedDownloadTask.
    */
   _createTask(record) {
     if (this.tasks.has(record.id)) {
       return this.tasks.get(record.id);
     }
 
-    const task = new DownloadTask({
-      id: record.id,
-      record,
-      repo: this.repo,
-      logger: this.logger,
-    });
+    let task;
+    if (record.is_segmented === 1) {
+      task = new SegmentedDownloadTask({
+        id: record.id,
+        record,
+        downloadsRepo: this.repo,
+        segmentsRepo: this.segmentsRepo,
+        connectionsPerFile: this.settings.get('connectionsPerFile') || 8,
+        autoFallback: this.settings.get('autoFallback') !== false,
+        logger: this.logger,
+      });
+
+      task.on('fallback-needed', async ({ reason }) => {
+        await this._fallbackToSingleConnection(record.id, reason);
+      });
+    } else {
+      task = new DownloadTask({
+        id: record.id,
+        record,
+        repo: this.repo,
+        logger: this.logger,
+      });
+    }
 
     task.on('progress', (payload) => {
       this.broadcast('download:progress', payload);
@@ -185,6 +285,37 @@ class DownloadManager extends EventEmitter {
 
     this.tasks.set(record.id, task);
     return task;
+  }
+
+  /**
+   * Graceful fallback from multi-segment to single-connection download.
+   */
+  async _fallbackToSingleConnection(id, reason) {
+    this.logger.warn(`Executing fallback to single-connection for download #${id}: ${reason}`);
+    const existing = this.tasks.get(id);
+    if (existing) {
+      try { await existing.pause(); } catch {}
+      this.tasks.delete(id);
+    }
+
+    this.repo.updateSegmentedInfo(id, {
+      is_segmented: 0,
+      segment_count: 1,
+      fallback_reason: reason,
+    });
+
+    this.events.add({
+      downloadId: id,
+      level: 'warn',
+      type: 'fallback',
+      message: `Switched to single-connection download: ${reason}`,
+    });
+
+    const updatedRec = this.repo.getById(id);
+    if (!updatedRec) return;
+
+    const singleTask = this._createTask(updatedRec);
+    await singleTask.start();
   }
 
   /**
@@ -206,7 +337,7 @@ class DownloadManager extends EventEmitter {
     for (const task of this.tasks.values()) {
       if (activeCount >= maxConcurrent) break;
 
-      if (task.state === 'pending' || task.state === 'queued' || (task.state === 'paused' && task.record.status === 'queued')) {
+      if (task.state === 'pending' || task.state === 'queued') {
         activeCount++;
         task.start().catch((err) => {
           this.logger.error(`Failed to start task #${task.id}:`, err);
@@ -232,7 +363,11 @@ class DownloadManager extends EventEmitter {
   async resume(id) {
     const task = this._getOrLoadTask(id);
     if (!task) throw new Error(`Download #${id} not found.`);
-    await task.start();
+    if (typeof task.resume === 'function') {
+      await task.resume();
+    } else {
+      await task.start();
+    }
     this.events.add({ downloadId: id, type: 'resumed', message: `Resumed download "${task.record.filename}"` });
     return true;
   }
@@ -294,7 +429,29 @@ class DownloadManager extends EventEmitter {
    */
   getTelemetry(id) {
     const task = this.tasks.get(id);
-    return task ? task.getTelemetry() : null;
+    if (task && typeof task.getTelemetry === 'function') {
+      return task.getTelemetry();
+    }
+    const rec = this.repo.getById(id);
+    if (rec && rec.is_segmented === 1) {
+      const segs = this.segmentsRepo.getByDownloadId(id);
+      return {
+        isSegmented: true,
+        totalSegments: segs.length,
+        completedSegments: segs.filter((s) => s.status === 'completed').length,
+        activeSegments: segs.filter((s) => s.status === 'downloading').length,
+        connectionCount: rec.segment_count || segs.length,
+        segments: segs.map((s) => ({
+          index: s.segment_index,
+          start: s.start_byte,
+          end: s.end_byte,
+          downloaded: s.downloaded_bytes,
+          expected: s.end_byte - s.start_byte + 1,
+          status: s.status,
+        })),
+      };
+    }
+    return null;
   }
 
   /**

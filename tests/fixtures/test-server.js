@@ -30,12 +30,14 @@ function createTestServer() {
   const buf1mb = createDeterministicBuffer(1024 * 1024, 0x33); // 1 MB
   const buf10mb = createDeterministicBuffer(10 * 1024 * 1024, 0x55); // 10 MB
   const buf100mb = createDeterministicBuffer(100 * 1024 * 1024, 0x88); // 100 MB
+  const bufUneven = createDeterministicBuffer(1234567, 0x99); // 1.23 MB uneven size
 
   const smallHash = sha256(smallBuffer);
   const largeHash = sha256(largeBuffer);
   const hash1mb = sha256(buf1mb);
   const hash10mb = sha256(buf10mb);
   const hash100mb = sha256(buf100mb);
+  const hashUneven = sha256(bufUneven);
 
   let retryAttempts = 0;
   let dynamicEtagCount = 0;
@@ -101,6 +103,9 @@ function createTestServer() {
     }
     if (pathname === '/100mb') {
       return serveBuffer(req, res, buf100mb, hash100mb, '100mb.bin');
+    }
+    if (pathname === '/uneven') {
+      return serveBuffer(req, res, bufUneven, hashUneven, 'uneven.bin');
     }
 
     // 2. Large file with full Range support
@@ -483,11 +488,13 @@ function createTestServer() {
     buf1mb,
     buf10mb,
     buf100mb,
+    bufUneven,
     smallHash,
     largeHash,
     hash1mb,
     hash10mb,
     hash100mb,
+    hashUneven,
     resetRetries: () => { retryAttempts = 0; },
     start: () => new Promise((resolve) => {
       server.listen(0, '127.0.0.1', () => {

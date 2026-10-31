@@ -15,7 +15,8 @@ const VIEW_FILTERS = Object.freeze({
 
 const LIST_COLUMNS = `id, source_url, filename, destination_path, status, total_bytes, downloaded_bytes,
   created_at, updated_at, completed_at, mime_type, supports_ranges, error_code, error_message,
-  task_type, category, queue_position, scheduled_at, retry_count, partial_path`;
+  task_type, category, queue_position, scheduled_at, retry_count, partial_path,
+  is_segmented, segment_count, fallback_reason`;
 
 function escapeLike(s) {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -82,8 +83,8 @@ class DownloadsRepo {
       INSERT INTO downloads (source_url, filename, destination_path, status, total_bytes, downloaded_bytes,
         created_at, updated_at, completed_at, mime_type, etag, last_modified, supports_ranges,
         error_code, error_message, task_type, category, queue_position, speed_limit_bps, max_segments, scheduled_at,
-        retry_count, partial_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        retry_count, partial_path, is_segmented, segment_count, fallback_reason)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       d.source_url, d.filename, d.destination_path, d.status || 'queued',
       d.total_bytes ?? null, d.downloaded_bytes ?? 0,
       d.created_at ?? now, now, d.completed_at ?? null,
@@ -91,7 +92,8 @@ class DownloadsRepo {
       d.error_code ?? null, d.error_message ?? null, d.task_type || 'http',
       d.category || categorize(d.filename, d.mime_type), d.queue_position ?? 0,
       d.speed_limit_bps ?? 0, d.max_segments ?? 0, d.scheduled_at ?? null,
-      d.retry_count ?? 0, d.partial_path ?? null
+      d.retry_count ?? 0, d.partial_path ?? null,
+      d.is_segmented ? 1 : 0, Math.max(1, d.segment_count || 1), d.fallback_reason ?? null
     );
     return Number(res.lastInsertRowid);
   }
@@ -156,6 +158,27 @@ class DownloadsRepo {
       meta.filename ?? null,
       meta.category ?? null,
       meta.partial_path ?? null,
+      now,
+      id
+    );
+  }
+
+  /**
+   * Updates segmented execution details.
+   */
+  updateSegmentedInfo(id, { is_segmented, segment_count, fallback_reason = null }) {
+    const now = Date.now();
+    return this.database.prepare(`
+      UPDATE downloads SET
+        is_segmented = ?,
+        segment_count = COALESCE(?, segment_count),
+        fallback_reason = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      is_segmented ? 1 : 0,
+      segment_count !== undefined ? Math.max(1, segment_count) : null,
+      fallback_reason,
       now,
       id
     );

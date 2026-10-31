@@ -120,8 +120,8 @@ export function renderSettings(root, ctx) {
 
     const segmentsRow = h('div', { class: 'setting-row' },
       h('div', { class: 'setting-text' },
-        h('label', { for: 'set-max-segments', text: 'Parallel Segments Per Download' }),
-        h('small', { text: 'Number of HTTP Range segments for supported downloads (default: 4).' })),
+        h('label', { for: 'set-max-segments', text: 'Parallel Connections Per Download' }),
+        h('small', { text: 'Number of HTTP Range segments for supported downloads (1–16, default: 8).' })),
       h('div', { class: 'setting-control' },
         h('input', {
           id: 'set-max-segments',
@@ -129,9 +129,37 @@ export function renderSettings(root, ctx) {
           type: 'number',
           min: 1,
           max: 16,
-          value: settings.maxSegments,
-          onchange: (e) => updateSetting({ maxSegments: Number(e.target.value) }),
+          value: settings.connectionsPerFile || settings.maxSegments || 8,
+          onchange: (e) => updateSetting({ connectionsPerFile: Number(e.target.value), maxSegments: Number(e.target.value) }),
         })));
+
+    const autoSegRow = h('div', { class: 'setting-row' },
+      h('div', { class: 'setting-text' },
+        h('label', { for: 'set-auto-seg', text: 'Automatic Multi-Segment Acceleration' }),
+        h('small', { text: 'Automatically split eligible downloads into parallel connection streams.' })),
+      h('div', { class: 'setting-control' },
+        h('label', { class: 'switch' },
+          h('input', {
+            id: 'set-auto-seg',
+            type: 'checkbox',
+            checked: settings.autoSegmentation !== false,
+            onchange: (e) => updateSetting({ autoSegmentation: e.target.checked }),
+          }),
+          h('span'))));
+
+    const autoFallbackRow = h('div', { class: 'setting-row' },
+      h('div', { class: 'setting-text' },
+        h('label', { for: 'set-auto-fallback', text: 'Automatic Single-Connection Fallback' }),
+        h('small', { text: 'Gracefully fall back to single-connection if multi-segment download fails or server rejects ranges.' })),
+      h('div', { class: 'setting-control' },
+        h('label', { class: 'switch' },
+          h('input', {
+            id: 'set-auto-fallback',
+            type: 'checkbox',
+            checked: settings.autoFallback !== false,
+            onchange: (e) => updateSetting({ autoFallback: e.target.checked }),
+          }),
+          h('span'))));
 
     const speedLimitRow = h('div', { class: 'setting-row' },
       h('div', { class: 'setting-text' },
@@ -168,6 +196,8 @@ export function renderSettings(root, ctx) {
       downloadDirRow,
       concurrentRow,
       segmentsRow,
+      autoSegRow,
+      autoFallbackRow,
       speedLimitRow,
       deletePartialRow);
 

@@ -75,6 +75,7 @@ export function renderList(root, ctx, viewId) {
       btn('Open file', 'file', () => guard(ctx.api.downloads.openFile(r.id)), { disabled: !canOpen }),
       btn('Open folder', 'folder', () => guard(ctx.api.downloads.showInFolder(r.id)), { disabled: none }),
       btn('Copy URL', 'link', () => guard(ctx.api.downloads.copyUrl(r.id), 'URL copied to clipboard'), { disabled: none }),
+      btn('Details', 'info', () => showDetails(r), { disabled: none }),
       btn('Error details', 'alert', () => showError(r), { disabled: none || !(r.error_code || r.error_message) }),
       btn('Remove', 'trash', () => removeSelected(), { disabled: none || r.status === 'downloading', cls: 'btn-danger' }),
     );
@@ -129,6 +130,55 @@ export function renderList(root, ctx, viewId) {
       await refresh();
       ctx.refreshStats();
     }
+  }
+
+  async function showDetails(r) {
+    if (!r) return;
+    let details = r;
+    try {
+      const full = await ctx.api.downloads.details(r.id);
+      if (full) details = full;
+    } catch {}
+
+    const tel = details.telemetry || ctx.liveStats.get(r.id) || null;
+    const isSeg = details.is_segmented === 1 || (tel && tel.isSegmented);
+
+    const infoList = [
+      h('div', { class: 'field' }, h('label', { text: 'Filename' }), h('div', { class: 'text-strong', text: details.filename })),
+      h('div', { class: 'field' }, h('label', { text: 'Source URL' }), h('div', { class: 'path-display', text: details.source_url })),
+      h('div', { class: 'field' }, h('label', { text: 'Destination Folder' }), h('div', { text: details.destination_path })),
+      h('div', { class: 'field' }, h('label', { text: 'Status' }), h('span', { class: 'status-pill' }, details.status)),
+      h('div', { class: 'field' }, h('label', { text: 'Transfer Progress' }), h('div', { text: `${formatBytes(details.downloaded_bytes)} of ${details.total_bytes ? formatBytes(details.total_bytes) : 'Unknown'} (${percent(details.downloaded_bytes, details.total_bytes)?.toFixed(1) || 0}%)` })),
+      h('div', { class: 'field' }, h('label', { text: 'Transfer Mode' }), h('div', { text: isSeg ? `Multi-Segment Accelerated (${details.segment_count || (tel ? tel.totalSegments : 8)} parallel connections)` : 'Single-Connection HTTP' })),
+    ];
+
+    if (details.fallback_reason) {
+      infoList.push(h('div', { class: 'field' }, h('label', { text: 'Fallback Note' }), h('div', { class: 'field-hint', text: details.fallback_reason })));
+    }
+
+    if (tel && tel.segments && tel.segments.length) {
+      const segRows = tel.segments.map((s) => {
+        const segPct = s.expected > 0 ? Math.min(100, Math.max(0, Math.round((s.downloaded / s.expected) * 100))) : 0;
+        return h('div', { class: 'segment-row', style: 'margin-bottom: 8px;' },
+          h('div', { style: 'display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 2px;' },
+            h('span', { text: `Part #${s.index + 1} (${formatBytes(s.start)}–${formatBytes(s.end)})` }),
+            h('span', { text: `${segPct}% [${s.status}]` })),
+          h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': segPct },
+            h('span', { style: `width: ${segPct}%;` })));
+      });
+
+      infoList.push(
+        h('div', { class: 'field' },
+          h('label', { text: `Parallel Connection Segments (${tel.completedSegments || 0}/${tel.totalSegments || 0} Complete)` }),
+          h('div', { class: 'segment-list', style: 'max-height: 200px; overflow-y: auto;' }, ...segRows))
+      );
+    }
+
+    openModal((close) => ({
+      title: 'Download Properties & Details',
+      body: infoList,
+      actions: [h('button', { class: 'btn btn-primary', type: 'button', onclick: () => close() }, 'Close')],
+    }));
   }
 
   function showError(r) {

@@ -21,6 +21,11 @@ function buildSchema({ defaultDownloadDir }) {
     downloadDir:            { default: defaultDownloadDir, validate: absPathOrEmpty, rendererWritable: false },
     maxConcurrentDownloads: { default: 3, validate: int(1, 16), rendererWritable: true },
     maxSegments:            { default: 4, validate: int(1, 16), rendererWritable: true },
+    connectionsPerFile:     { default: 8, validate: int(1, 16), rendererWritable: true },
+    maxConnections:         { default: 16, validate: int(1, 32), rendererWritable: true },
+    autoSegmentation:       { default: true, validate: bool, rendererWritable: true },
+    autoFallback:           { default: true, validate: bool, rendererWritable: true },
+    minSegmentSize:         { default: 5242880, validate: int(1024, 104857600), rendererWritable: true }, // 5 MB
     globalSpeedLimitKBps:   { default: 0, validate: int(0, 10_000_000), rendererWritable: true }, // 0 = unlimited
     theme:                  { default: 'dark', validate: oneOf('dark', 'light', 'system'), rendererWritable: true },
     notifications:          { default: true, validate: bool, rendererWritable: true },
