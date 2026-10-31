@@ -1,0 +1,31 @@
+{
+  "name": "barq-downloader",
+  "productName": "BARQ Downloader",
+  "version": "0.1.0",
+  "description": "BARQ Downloader (برق) — Speed at Every Click. A free, secure Windows download manager.",
+  "main": "src/main/main.js",
+  "private": true,
+  "author": "BARQ",
+  "license": "UNLICENSED",
+  "homepage": "https://example.invalid/barq-downloader",
+  "barq": {
+    "appId": "com.barq.downloader",
+    "brand": "BARQ",
+    "brandUrdu": "برق",
+    "tagline": "Speed at Every Click."
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"tests/*.test.js\"",
+    "smoke": "node scripts/smoke.js",
+    "syntax": "node scripts/check-syntax.js",
+    "icons": "electron scripts/build-icons.js",
+    "check": "npm run syntax && npm test && npm run smoke"
+  },
+  "devDependencies": {
+    "electron": "45.2.1"
+  }
+}

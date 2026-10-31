@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Local runtime data (databases, logs, temp segments) — never commit
+dev-data/
+portable-data/
+test-data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Build output
+dist/
+out/
+release/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="BARQ">
+  <title>BARQ</title>
+  <defs>
+    <linearGradient id="barq-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1f25"/>
+      <stop offset="1" stop-color="#0b0d10"/>
+    </linearGradient>
+    <linearGradient id="barq-bolt" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#5cffc4"/>
+      <stop offset="0.45" stop-color="#00e09a"/>
+      <stop offset="1" stop-color="#00a874"/>
+    </linearGradient>
+    <linearGradient id="barq-edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+  </defs>
+  <!-- Graphite tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#barq-tile)"/>
+  <rect x="17.5" y="17.5" width="477" height="477" rx="110.5" fill="none" stroke="url(#barq-edge)" stroke-width="3"/>
+  <!-- Emerald glow -->
+  <ellipse cx="256" cy="268" rx="150" ry="170" fill="#00e09a" opacity="0.07"/>
+  <!-- BARQ bolt: geometric lightning with a forward-leaning cut -->
+  <path d="M302 60 L132 290 H236 L206 452 L380 214 H276 Z" fill="url(#barq-bolt)"/>
+  <path d="M302 60 L132 290 H236 L246 238 H196 Z" fill="#ffffff" opacity="0.14"/>
+</svg>

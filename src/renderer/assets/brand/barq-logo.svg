@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 320" width="1120" height="320" role="img" aria-label="BARQ Downloader — Speed at Every Click.">
+  <title>BARQ Downloader</title>
+  <defs>
+    <linearGradient id="l-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1f25"/>
+      <stop offset="1" stop-color="#0b0d10"/>
+    </linearGradient>
+    <linearGradient id="l-bolt" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#5cffc4"/>
+      <stop offset="0.45" stop-color="#00e09a"/>
+      <stop offset="1" stop-color="#00a874"/>
+    </linearGradient>
+  </defs>
+  <rect width="1120" height="320" rx="36" fill="#0d0f12"/>
+  <g transform="translate(40 40) scale(0.46875)">
+    <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#l-tile)"/>
+    <rect x="17.5" y="17.5" width="477" height="477" rx="110.5" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="3"/>
+    <path d="M302 60 L132 290 H236 L206 452 L380 214 H276 Z" fill="url(#l-bolt)"/>
+    <path d="M302 60 L132 290 H236 L246 238 H196 Z" fill="#ffffff" opacity="0.14"/>
+  </g>
+  <!-- Speed lines -->
+  <g fill="#00e09a">
+    <rect x="300" y="118" width="26" height="8" rx="4" opacity="0.35"/>
+    <rect x="290" y="156" width="36" height="8" rx="4" opacity="0.6"/>
+    <rect x="304" y="194" width="22" height="8" rx="4" opacity="0.35"/>
+  </g>
+  <text x="350" y="196" font-family="'Segoe UI Variable Display','Segoe UI','Inter','Helvetica Neue',Arial,sans-serif" font-size="128" font-weight="800" letter-spacing="10" fill="#f2f4f6">BARQ</text>
+  <text x="770" y="190" font-family="'Segoe UI','Noto Naskh Arabic','Tahoma',sans-serif" font-size="88" font-weight="700" fill="#00e09a">برق</text>
+  <text x="354" y="250" font-family="'Segoe UI Variable Text','Segoe UI','Inter',Arial,sans-serif" font-size="30" font-weight="500" letter-spacing="6" fill="#8b939c">SPEED AT EVERY CLICK.</text>
+</svg>
