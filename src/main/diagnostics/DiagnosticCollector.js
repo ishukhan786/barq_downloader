@@ -24,13 +24,11 @@ class DiagnosticCollector {
   }
 
   getSystemInfo() {
-    let cpuModel = 'Unknown CPU';
     let cpuCount = 1;
     try {
       const cpus = os.cpus();
       if (cpus && cpus.length) {
         cpuCount = cpus.length;
-        cpuModel = cpus[0].model.trim();
       }
     } catch {}
 
@@ -41,7 +39,6 @@ class DiagnosticCollector {
       arch: os.arch(),
       totalMemoryMB: Math.round(os.totalmem() / (1024 * 1024)),
       freeMemoryMB: Math.round(os.freemem() / (1024 * 1024)),
-      cpuModel,
       cpuCount,
       systemUptimeHours: Number((os.uptime() / 3600).toFixed(2)),
     };

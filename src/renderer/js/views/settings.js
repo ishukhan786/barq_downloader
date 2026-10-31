@@ -234,7 +234,7 @@ export function renderSettings(root, ctx) {
     const hostStatusRow = h('div', { class: 'setting-row' },
       h('div', { class: 'setting-text' },
         h('span', { class: 'label', text: 'Native Messaging Host Status' }),
-        h('div', { style: 'display: flex; gap: 8px; margin-top: 4px; font-size: 11px;' },
+        h('div', { class: 'setting-badges' },
           h('span', { class: `badge ${browserInfo?.chromeRegistered ? 'badge-ok' : 'badge-warn'}`, text: browserInfo?.chromeRegistered ? '✓ Chrome Registered' : 'Chrome Not Registered' }),
           h('span', { class: `badge ${browserInfo?.edgeRegistered ? 'badge-ok' : 'badge-warn'}`, text: browserInfo?.edgeRegistered ? '✓ Edge Registered' : 'Edge Not Registered' }),
           h('span', { class: `badge ${browserInfo?.pipeRunning ? 'badge-ok' : 'badge-muted'}`, text: browserInfo?.pipeRunning ? '● Pipe Listening' : 'Pipe Inactive' }))),

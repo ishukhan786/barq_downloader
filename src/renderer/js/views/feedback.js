@@ -224,7 +224,7 @@ export function renderFeedback(root, ctx) {
     const diagCheckbox = h('input', {
       type: 'checkbox',
       id: 'bug-diag-check',
-      checked: true,
+      checked: false, // OPT-IN BY DEFAULT (Milestone 7.1 Privacy Mandate)
     });
 
     async function handleSave(status = 'saved') {
@@ -506,9 +506,13 @@ export function renderFeedback(root, ctx) {
       });
 
       const statusBadge = h('span', {
-        class: `badge ${r.status === 'exported' ? 'badge-accent' : r.status === 'draft' ? 'badge-subtle' : ''}`,
+        class: `badge ${r.status === 'ready' ? 'badge-accent' : r.status === 'draft' ? 'badge-subtle' : ''}`,
         text: r.status,
       });
+
+      const exportBadge = (r.is_exported || r.exported_at)
+        ? h('span', { class: 'badge badge-accent', title: `Exported ${r.exported_at ? new Date(r.exported_at).toLocaleString() : ''}`, text: 'Exported' })
+        : null;
 
       const severityBadge = r.severity ? h('span', {
         class: `badge ${r.severity === 'critical' || r.severity === 'high' ? 'badge-danger' : ''}`,
@@ -521,7 +525,7 @@ export function renderFeedback(root, ctx) {
         h('td', { class: 'col-name' }, h('span', { text: r.title, title: r.title })),
         h('td', {}, h('span', { class: 'cat-chip', text: r.category.replace(/_/g, ' ') })),
         h('td', {}, severityBadge),
-        h('td', {}, statusBadge),
+        h('td', {}, statusBadge, exportBadge ? ' ' : '', exportBadge || ''),
         h('td', {}, h('span', { text: relativeTime(r.created_at), title: new Date(r.created_at).toLocaleString() })),
         h('td', { class: 'row-actions' },
           h('button', {

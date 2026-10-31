@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 
 const VALID_TYPES = new Set(['bug', 'feature']);
 const VALID_SEVERITIES = new Set(['low', 'medium', 'high', 'critical']);
-const VALID_STATUSES = new Set(['draft', 'saved', 'exported', 'ready']);
+const VALID_STATUSES = new Set(['draft', 'saved', 'ready']);
 
 const BUG_CATEGORIES = Object.freeze([
   'download_failure',
@@ -28,7 +28,7 @@ const FEATURE_CATEGORIES = Object.freeze([
 
 const LIST_COLUMNS = `id, report_id, report_type, title, category, severity,
   description, reproduction_steps, expected_behavior, actual_behavior,
-  status, created_at, updated_at, exported_at, diagnostic_included`;
+  status, created_at, updated_at, exported_at, diagnostic_included, is_exported`;
 
 function escapeLike(s) {
   return String(s).replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -98,8 +98,11 @@ class FeedbackRepo {
     }
 
     if (data.status !== undefined) {
-      if (!VALID_STATUSES.has(data.status)) {
-        throw new Error(`Invalid status "${data.status}". Must be one of: draft, saved, exported, ready.`);
+      if (data.status === 'exported') {
+        data.status = 'saved';
+        data.is_exported = 1;
+      } else if (!VALID_STATUSES.has(data.status)) {
+        throw new Error(`Invalid status "${data.status}". Must be one of: draft, saved, ready.`);
       }
     }
   }
@@ -112,13 +115,14 @@ class FeedbackRepo {
     const severity = data.severity && VALID_SEVERITIES.has(data.severity) ? data.severity : null;
     const status = data.status && VALID_STATUSES.has(data.status) ? data.status : 'saved';
     const diagIncluded = data.diagnostic_included ? 1 : 0;
+    const isExported = data.is_exported ? 1 : 0;
 
     const stmt = this.database.prepare(`
       INSERT INTO feedback_reports (
         report_id, report_type, title, category, severity,
         description, reproduction_steps, expected_behavior, actual_behavior,
-        status, created_at, updated_at, exported_at, diagnostic_included
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, created_at, updated_at, exported_at, diagnostic_included, is_exported
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -135,7 +139,8 @@ class FeedbackRepo {
       now,
       now,
       null,
-      diagIncluded
+      diagIncluded,
+      isExported
     );
 
     return this.getById(result.lastInsertRowid);
@@ -161,9 +166,13 @@ class FeedbackRepo {
       params.push(type);
     }
 
-    if (status && VALID_STATUSES.has(status)) {
-      clauses.push('status = ?');
-      params.push(status);
+    if (status) {
+      if (status === 'exported') {
+        clauses.push('(is_exported = 1 OR exported_at IS NOT NULL)');
+      } else if (VALID_STATUSES.has(status)) {
+        clauses.push('status = ?');
+        params.push(status);
+      }
     }
 
     const term = typeof search === 'string' ? search.trim().slice(0, 200) : '';
@@ -255,7 +264,7 @@ class FeedbackRepo {
     const now = Date.now();
     this.database.prepare(`
       UPDATE feedback_reports
-      SET status = 'exported', exported_at = ?, updated_at = ?
+      SET is_exported = 1, exported_at = ?, updated_at = ?
       WHERE id = ?
     `).run(now, now, numId);
     return this.getById(numId);
@@ -269,7 +278,8 @@ class FeedbackRepo {
         SUM(CASE WHEN report_type = 'feature' THEN 1 ELSE 0 END) as features,
         SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as drafts,
         SUM(CASE WHEN status = 'saved' THEN 1 ELSE 0 END) as saved,
-        SUM(CASE WHEN status = 'exported' THEN 1 ELSE 0 END) as exported
+        SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) as ready,
+        SUM(CASE WHEN is_exported = 1 OR exported_at IS NOT NULL THEN 1 ELSE 0 END) as exported
       FROM feedback_reports
     `).get();
 
@@ -279,6 +289,7 @@ class FeedbackRepo {
       features: Number(rows.features) || 0,
       drafts: Number(rows.drafts) || 0,
       saved: Number(rows.saved) || 0,
+      ready: Number(rows.ready) || 0,
       exported: Number(rows.exported) || 0,
     };
   }

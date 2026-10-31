@@ -137,6 +137,18 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 5,
+    name: 'feedback_lifecycle_refinement',
+    up(db) {
+      db.exec(`
+        ALTER TABLE feedback_reports ADD COLUMN is_exported INTEGER NOT NULL DEFAULT 0 CHECK (is_exported IN (0, 1));
+        UPDATE feedback_reports SET is_exported = 1 WHERE exported_at IS NOT NULL OR status = 'exported';
+        UPDATE feedback_reports SET status = 'saved' WHERE status = 'exported';
+        CREATE INDEX idx_feedback_exported ON feedback_reports(is_exported);
+      `);
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);

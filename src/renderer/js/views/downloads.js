@@ -159,18 +159,19 @@ export function renderList(root, ctx, viewId) {
     if (tel && tel.segments && tel.segments.length) {
       const segRows = tel.segments.map((s) => {
         const segPct = s.expected > 0 ? Math.min(100, Math.max(0, Math.round((s.downloaded / s.expected) * 100))) : 0;
-        return h('div', { class: 'segment-row', style: 'margin-bottom: 8px;' },
-          h('div', { style: 'display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 2px;' },
+        const fill = h('span');
+        fill.style.width = `${segPct}%`;
+        return h('div', { class: 'segment-row' },
+          h('div', { class: 'segment-row-header' },
             h('span', { text: `Part #${s.index + 1} (${formatBytes(s.start)}–${formatBytes(s.end)})` }),
             h('span', { text: `${segPct}% [${s.status}]` })),
-          h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': segPct },
-            h('span', { style: `width: ${segPct}%;` })));
+          h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': segPct }, fill));
       });
 
       infoList.push(
         h('div', { class: 'field' },
           h('label', { text: `Parallel Connection Segments (${tel.completedSegments || 0}/${tel.totalSegments || 0} Complete)` }),
-          h('div', { class: 'segment-list', style: 'max-height: 200px; overflow-y: auto;' }, ...segRows))
+          h('div', { class: 'segment-list' }, ...segRows))
       );
     }
 

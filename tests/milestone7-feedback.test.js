@@ -41,11 +41,11 @@ test('BARQ Downloader — Milestone 7 Feedback, Diagnostics & Support Suite', as
   });
 
   // ==========================================================================
-  // 1. DATABASE SCHEMA & MIGRATION V4
+  // 1. DATABASE SCHEMA & MIGRATION V4 & V5
   // ==========================================================================
 
-  await t.test('1.1: Migration v4 applies cleanly and creates feedback_reports table', () => {
-    assert.ok(barqDb.userVersion >= 4, `Schema version must be at least 4, got ${barqDb.userVersion}`);
+  await t.test('1.1: Migration v4 & v5 apply cleanly and create feedback_reports table with is_exported', () => {
+    assert.ok(barqDb.userVersion >= 5, `Schema version must be at least 5, got ${barqDb.userVersion}`);
 
     const tables = barqDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name);
     assert.ok(tables.includes('feedback_reports'), 'feedback_reports table must exist');
@@ -54,6 +54,10 @@ test('BARQ Downloader — Milestone 7 Feedback, Diagnostics & Support Suite', as
     assert.ok(indices.includes('idx_feedback_created_at'), 'idx_feedback_created_at index must exist');
     assert.ok(indices.includes('idx_feedback_type'), 'idx_feedback_type index must exist');
     assert.ok(indices.includes('idx_feedback_status'), 'idx_feedback_status index must exist');
+    assert.ok(indices.includes('idx_feedback_exported'), 'idx_feedback_exported index must exist');
+
+    const cols = barqDb.prepare("PRAGMA table_info('feedback_reports')").all().map((c) => c.name);
+    assert.ok(cols.includes('is_exported'), 'feedback_reports must include is_exported column');
   });
 
   // ==========================================================================
@@ -214,6 +218,7 @@ test('BARQ Downloader — Milestone 7 Feedback, Diagnostics & Support Suite', as
     const username = Sanitizer.getUsername();
     const sensitive = `Download error from https://private-server.net:8443/files/confidential.iso?token=secret12345
       Target: C:\\Users\\${username}\\Downloads\\confidential.iso
+      User account: ${username}
       Server IP: 203.0.113.195
       User email: engineer@barq-downloader.org
       Header: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xyz
@@ -237,6 +242,7 @@ test('BARQ Downloader — Milestone 7 Feedback, Diagnostics & Support Suite', as
     assert.ok(scrubbed.includes('[REDACTED_IP]'));
     assert.ok(scrubbed.includes('[REDACTED_EMAIL]'));
     assert.ok(scrubbed.includes('[REDACTED_TOKEN]') || scrubbed.includes('[REDACTED_SECRET]'));
+    assert.ok(scrubbed.includes('[REDACTED_PATH]'));
     assert.ok(scrubbed.includes('[USER]'));
   });
 
@@ -359,7 +365,8 @@ test('BARQ Downloader — Milestone 7 Feedback, Diagnostics & Support Suite', as
 
     // Mark report exported
     const marked = feedbackRepo.markExported(createdBugId);
-    assert.equal(marked.status, 'exported');
+    assert.equal(marked.is_exported, 1);
+    assert.equal(marked.status, 'ready'); // Preserves lifecycle status
     assert.ok(marked.exported_at > 0);
   });
 
@@ -397,5 +404,177 @@ test('BARQ Downloader — Milestone 7 Feedback, Diagnostics & Support Suite', as
     assert.ok(!str.includes('.barq-part'));
     assert.ok(!str.includes('token='));
     assert.ok(!str.includes('password='));
+  });
+
+  // ==========================================================================
+  // 7. MILESTONE 7.1 AUDIT & RELEASE READINESS VERIFICATIONS
+  // ==========================================================================
+
+  await t.test('7.1: Migration v5 decouples lifecycle status from export state', () => {
+    // 1. Create a draft report
+    const draft = feedbackRepo.create({
+      report_type: 'bug',
+      title: 'M7.1 Draft report for lifecycle verification',
+      category: 'ui_ux',
+      description: 'Verifying lifecycle statuses and is_exported column',
+      status: 'draft',
+      diagnostic_included: 0,
+    });
+    assert.equal(draft.status, 'draft');
+    assert.equal(draft.is_exported, 0);
+
+    // 2. Transition draft to saved
+    const saved = feedbackRepo.update(draft.id, { status: 'saved' });
+    assert.equal(saved.status, 'saved');
+    assert.equal(saved.is_exported, 0);
+
+    // 3. Mark as exported - verify status remains 'saved', is_exported becomes 1
+    const exported = feedbackRepo.markExported(saved.id);
+    assert.equal(exported.status, 'saved', 'Lifecycle status must remain saved upon export');
+    assert.equal(exported.is_exported, 1, 'is_exported must be 1 after export');
+    assert.ok(exported.exported_at > 0);
+
+    // 4. Backward compatibility: setting legacy status 'exported' maps to saved + is_exported=1
+    const legacyReport = feedbackRepo.create({
+      report_type: 'feature',
+      title: 'Legacy import simulation',
+      category: 'other',
+      description: 'Simulating legacy report with exported status',
+      status: 'exported',
+    });
+    assert.equal(legacyReport.status, 'saved');
+    assert.equal(legacyReport.is_exported, 1);
+
+    // 5. Querying by exported status finds both
+    const exportedList = feedbackRepo.list({ status: 'exported' });
+    assert.ok(exportedList.some((r) => r.id === exported.id));
+    assert.ok(exportedList.some((r) => r.id === legacyReport.id));
+  });
+
+  await t.test('7.2: Opt-in diagnostics policy and CPU model exclusion', () => {
+    // 1. Verify CPU model string is never collected (only architecture and count)
+    const collector = new DiagnosticCollector({
+      database: barqDb,
+      downloadsRepo,
+      eventsRepo,
+    });
+    const bundle = collector.collectDiagnosticBundle();
+    assert.equal(bundle.system.cpuModel, undefined, 'cpuModel must not exist in diagnostic bundle');
+    assert.equal(typeof bundle.system.cpuCount, 'number');
+    assert.ok(bundle.system.cpuCount >= 1);
+    assert.equal(typeof bundle.system.arch, 'string');
+
+    // 2. Verify bug reports can be saved completely without diagnostics
+    const bugWithoutDiag = feedbackRepo.create({
+      report_type: 'bug',
+      title: 'Bug report submitted with opt-in diagnostics disabled',
+      category: 'other',
+      severity: 'low',
+      description: 'User explicitly unchecked the diagnostic attachment checkbox.',
+      diagnostic_included: 0,
+    });
+    assert.equal(bugWithoutDiag.diagnostic_included, 0);
+
+    const fetched = feedbackRepo.getById(bugWithoutDiag.id);
+    assert.equal(fetched.diagnostic_included, 0);
+  });
+
+  await t.test('7.3: Deep redaction: IPv6, UNC paths, Cookies, Auth headers, and filenames', () => {
+    const rawLeak = [
+      'IPv6 standard: 2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+      'IPv6 compressed: fe80::1ff:fe23:4567:890a',
+      'UNC share: \\\\fileserver01\\backups\\database.bak',
+      'UNC forward: //nas.internal.net/storage/export.zip',
+      'Auth Header: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.token123',
+      'Cookie Header: Set-Cookie: session_id=abcxyz987654; Path=/; HttpOnly; Secure',
+      'Quoted media: Downloaded chunk from "secret_archive_2026.iso" successfully',
+      'Legitimate URL: https://releases.ubuntu.com/24.04/ubuntu.iso',
+    ].join('\n');
+
+    const scrubbed = Sanitizer.scrubText(rawLeak);
+
+    // Verify all private details are redacted
+    assert.ok(!scrubbed.includes('2001:0db8:85a3'));
+    assert.ok(!scrubbed.includes('fe80::1ff'));
+    assert.ok(!scrubbed.includes('\\\\fileserver01\\backups'));
+    assert.ok(!scrubbed.includes('nas.internal.net'));
+    assert.ok(!scrubbed.includes('eyJhbGciOiJIUzI1Ni'));
+    assert.ok(!scrubbed.includes('abcxyz987654'));
+    assert.ok(!scrubbed.includes('secret_archive_2026.iso'));
+    assert.ok(!scrubbed.includes('releases.ubuntu.com'));
+
+    // Verify redaction tokens
+    assert.ok(scrubbed.includes('[REDACTED_IP]'));
+    assert.ok(scrubbed.includes('[REDACTED_UNC_PATH]'));
+    assert.ok(scrubbed.includes('[REDACTED_TOKEN]'));
+    assert.ok(scrubbed.includes('[REDACTED_COOKIE]'));
+    assert.ok(scrubbed.includes('[REDACTED_FILENAME]'));
+    assert.ok(scrubbed.includes('[REDACTED_URL]'));
+  });
+
+  await t.test('7.4: ZipExporter PKZIP 2.0 boundary conditions and temporary file cleanup', () => {
+    // 1. Rejects duplicate filenames
+    assert.throws(() => {
+      ZipExporter.createZipBuffer([
+        { name: 'report.json', content: 'content1' },
+        { name: 'report.json', content: 'content2' },
+      ]);
+    }, /Duplicate entry name in ZIP archive: "report\.json"/);
+
+    // 2. Rejects malformed file entry
+    assert.throws(() => {
+      ZipExporter.createZipBuffer([
+        { name: '', content: 'empty name' },
+      ]);
+    }, /filename is missing or empty/);
+
+    assert.throws(() => {
+      ZipExporter.createZipBuffer([null]);
+    }, /expected an object/);
+
+    // 3. Temporary file cleanup on interrupted export
+    const destDir = path.join(testDir, 'cleanuptest');
+    fs.mkdirSync(destDir, { recursive: true });
+    const targetFile = path.join(destDir, 'test-cleanup.zip');
+
+    // Create a read-only directory or file collision to simulate rename failure
+    const blockingDir = path.join(destDir, 'collision');
+    fs.mkdirSync(blockingDir, { recursive: true });
+
+    // Calling exportZip where destination is a directory triggers rename error
+    assert.throws(() => {
+      ZipExporter.exportZip(blockingDir, {
+        report: { report_id: 'BARQ-COLLIS' },
+        diagnostics: {},
+        logs: [],
+        privacyPolicy: 'Clean test',
+      });
+    });
+
+    // Verify no stray .tmp-* files remain in destDir
+    const leftOvers = fs.readdirSync(destDir).filter((f) => f.includes('.tmp-'));
+    assert.equal(leftOvers.length, 0, 'Temporary .tmp-* staging files must be cleaned up on failure');
+  });
+
+  await t.test('7.5: Zero telemetry verification across feedback & diagnostics modules', () => {
+    const modulesToCheck = [
+      'src/main/diagnostics/DiagnosticCollector.js',
+      'src/main/diagnostics/Sanitizer.js',
+      'src/main/diagnostics/ZipExporter.js',
+      'src/main/db/feedback-repo.js',
+    ];
+
+    for (const modPath of modulesToCheck) {
+      const fullPath = path.join(__dirname, '..', modPath);
+      const content = fs.readFileSync(fullPath, 'utf8');
+
+      // Assert no automatic outbound network calls exist in feedback/diagnostic modules
+      assert.ok(!content.includes('http.request'), `${modPath} must not perform http.request`);
+      assert.ok(!content.includes('https.request'), `${modPath} must not perform https.request`);
+      assert.ok(!content.includes('fetch('), `${modPath} must not perform fetch()`);
+      assert.ok(!content.includes('WebSocket'), `${modPath} must not instantiate WebSocket`);
+      assert.ok(!content.includes('analytics'), `${modPath} must not contain analytics SDK`);
+      assert.ok(!content.includes('crashReport'), `${modPath} must not contain external crash reporter`);
+    }
   });
 });

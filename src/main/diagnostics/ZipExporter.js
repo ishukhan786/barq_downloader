@@ -7,8 +7,12 @@ const zlib = require('node:zlib');
 /**
  * Pure Node.js zero-dependency PKZIP writer and diagnostic bundle packager.
  * Adheres strictly to standard PKZIP 2.0 specifications.
+ * Enforces limits: 4GB per file, 4GB archive total, 65535 entries max (ZIP64 documented as unsupported).
  */
 class ZipExporter {
+  static MAX_FILE_SIZE = 0xFFFFFFFF; // 4 GB
+  static MAX_ENTRIES = 0xFFFF;      // 65535
+
   /**
    * Generates a date-stamped filename for ZIP diagnostics: BARQ-Diagnostics-YYYY-MM-DD-HH-mm.zip
    */
@@ -48,6 +52,7 @@ class ZipExporter {
 
   /**
    * Creates a valid, standard PKZIP archive Buffer from an array of files.
+   * Validates duplicate names, empty entries, and PKZIP 2.0 specifications.
    * @param {Array<{ name: string, content: string | Buffer }>} files
    * @returns {Buffer}
    */
@@ -56,16 +61,42 @@ class ZipExporter {
       throw new Error('At least one file is required to create a ZIP archive.');
     }
 
+    if (files.length > this.MAX_ENTRIES) {
+      throw new Error(`PKZIP 2.0 limit exceeded: archive cannot contain more than ${this.MAX_ENTRIES} entries (ZIP64 is not supported).`);
+    }
+
     const { dosTime, dosDate } = this.dosDateTime();
     const localHeaders = [];
     const centralHeaders = [];
+    const seenFilenames = new Set();
     let offset = 0;
 
     for (const file of files) {
-      const filename = String(file.name || 'file.txt').replace(/\\/g, '/');
+      if (!file || typeof file !== 'object') {
+        throw new Error('Invalid file entry in ZIP export list: expected an object.');
+      }
+      if (typeof file.name !== 'string' || !file.name.trim()) {
+        throw new Error('Invalid file entry: filename is missing or empty.');
+      }
+
+      const filename = file.name.trim().replace(/\\/g, '/');
+      const lowerName = filename.toLowerCase();
+      if (seenFilenames.has(lowerName)) {
+        throw new Error(`Duplicate entry name in ZIP archive: "${filename}".`);
+      }
+      seenFilenames.add(lowerName);
+
+      if (file.content === undefined || file.content === null) {
+        throw new Error(`File content for "${filename}" cannot be null or undefined.`);
+      }
+
       const raw = Buffer.isBuffer(file.content)
         ? file.content
         : Buffer.from(typeof file.content === 'string' ? file.content : JSON.stringify(file.content, null, 2), 'utf8');
+
+      if (raw.length > this.MAX_FILE_SIZE) {
+        throw new Error(`File "${filename}" exceeds the 4GB PKZIP 2.0 size limit (ZIP64 is not supported).`);
+      }
 
       const compressed = zlib.deflateRawSync(raw);
       const crc = zlib.crc32(raw);
@@ -110,6 +141,10 @@ class ZipExporter {
 
       centralHeaders.push(Buffer.concat([cd, nameBuf]));
       offset += localRecord.length;
+
+      if (offset > this.MAX_FILE_SIZE) {
+        throw new Error('Total archive size exceeds the 4GB PKZIP 2.0 limit (ZIP64 is not supported).');
+      }
     }
 
     const centralDir = Buffer.concat(centralHeaders);
@@ -130,6 +165,7 @@ class ZipExporter {
 
   /**
    * Atomically exports full diagnostic ZIP package to target file path.
+   * Cleans up temporary staging file if write or rename encounters an error.
    */
   static exportZip(destPath, { report, diagnostics, logs, privacyPolicy }) {
     if (!destPath || typeof destPath !== 'string') {
@@ -169,7 +205,7 @@ class ZipExporter {
           ' - NO passwords, credentials, or cookies',
           ' - NO download URLs or complete destination file paths',
           ' - NO database files (.db) or partial download chunks (.barq-part)',
-          ' - NO personal user folder names or system accounts',
+          ' - NO personal user folder names, UNC paths, or system accounts',
           '',
           `Generated: ${new Date().toISOString()}`,
         ].join('\n'),
@@ -182,8 +218,14 @@ class ZipExporter {
     fs.mkdirSync(dir, { recursive: true });
 
     const tempPath = `${destPath}.tmp-${Date.now()}`;
-    fs.writeFileSync(tempPath, zipBuffer);
-    fs.renameSync(tempPath, destPath);
+    try {
+      fs.writeFileSync(tempPath, zipBuffer);
+      fs.renameSync(tempPath, destPath);
+    } finally {
+      if (fs.existsSync(tempPath)) {
+        try { fs.rmSync(tempPath, { force: true }); } catch {}
+      }
+    }
 
     return {
       path: destPath,
@@ -194,6 +236,7 @@ class ZipExporter {
 
   /**
    * Atomically exports single JSON report to target file path.
+   * Cleans up temporary staging file if write or rename encounters an error.
    */
   static exportJson(destPath, data) {
     if (!destPath || typeof destPath !== 'string') {
@@ -205,8 +248,14 @@ class ZipExporter {
     fs.mkdirSync(dir, { recursive: true });
 
     const tempPath = `${destPath}.tmp-${Date.now()}`;
-    fs.writeFileSync(tempPath, payload, 'utf8');
-    fs.renameSync(tempPath, destPath);
+    try {
+      fs.writeFileSync(tempPath, payload, 'utf8');
+      fs.renameSync(tempPath, destPath);
+    } finally {
+      if (fs.existsSync(tempPath)) {
+        try { fs.rmSync(tempPath, { force: true }); } catch {}
+      }
+    }
 
     return {
       path: destPath,

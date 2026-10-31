@@ -4,7 +4,8 @@ const os = require('node:os');
 
 /**
  * Privacy-first Sanitizer for BARQ Diagnostics & Feedback.
- * Ensures zero personal identifiers, credentials, URLs, or local user paths leak into exports.
+ * Ensures zero personal identifiers, credentials, URLs, UNC paths,
+ * IP addresses, local directory paths, or filenames leak into exports.
  */
 class Sanitizer {
   static getUsername() {
@@ -16,7 +17,7 @@ class Sanitizer {
   }
 
   /**
-   * Scrubs a string of URLs, emails, Windows/Unix user paths, tokens, and IP addresses.
+   * Scrubs a string of URLs, IPs, UNC paths, emails, user paths, tokens, cookies, and filenames.
    * @param {string} text
    * @returns {string}
    */
@@ -24,34 +25,54 @@ class Sanitizer {
     if (typeof text !== 'string') return '';
     let scrubbed = text;
 
-    // 1. Scrub Windows username from any path
+    // 1. Scrub URLs with any protocol (http, https, ftp, ws, wss, file) including ports & query strings
+    scrubbed = scrubbed.replace(/[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s"'<>\)]+/gi, '[REDACTED_URL]');
+
+    // 2. Scrub UNC Network Paths (\\server\share\file or //server/share/file)
+    scrubbed = scrubbed.replace(/(?<![:a-zA-Z0-9])(?:\\\\|\/\/)[a-zA-Z0-9_.-]+(?:[\\\/][a-zA-Z0-9_.$ -]+)+/g, '[REDACTED_UNC_PATH]');
+
+    // 3. Scrub Windows username from any path or string
     const username = this.getUsername();
     if (username && username.length > 1) {
       const userRegex = new RegExp(`([\\\\/][Uu]sers[\\\\/])${username}([\\\\/]|\\b)`, 'g');
       scrubbed = scrubbed.replace(userRegex, '$1[USER]$2');
-      // Direct username occurrences in file paths
       const directRegex = new RegExp(username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
       scrubbed = scrubbed.replace(directRegex, '[USER]');
     }
 
-    // 2. Scrub Windows full user paths: C:\Users\...\
-    scrubbed = scrubbed.replace(/[A-Za-z]:\\[Uu]sers\\[^\\]+/g, 'C:\\Users\\[USER]');
+    // 4. Scrub Windows & Unix User Profile Directories
+    scrubbed = scrubbed.replace(/[A-Za-z]:\\[Uu]sers\\[^\s"',;&<>]+/g, 'C:\\Users\\[USER]');
+    scrubbed = scrubbed.replace(/(?:\/home|\/Users)\/[^\s"',;&<>]+/g, '/home/[USER]');
+    scrubbed = scrubbed.replace(/~[a-zA-Z0-9_.-]*/g, '~');
 
-    // 3. Scrub HTTP/HTTPS URLs with query params, paths, or credentials
-    scrubbed = scrubbed.replace(/https?:\/\/[^\s"'<>\)]+/gi, '[REDACTED_URL]');
-
-    // 4. Scrub email addresses
+    // 5. Scrub email addresses
     scrubbed = scrubbed.replace(/[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/g, '[REDACTED_EMAIL]');
 
-    // 5. Scrub auth tokens & bearer strings
+    // 6. Scrub Cookies & Authorization Headers
+    scrubbed = scrubbed.replace(/(?:Authorization|Auth)\s*:\s*(?:Bearer|Basic|Token)\s+[^\s\r\n,;]+/gi, 'Authorization: [REDACTED_TOKEN]');
+    scrubbed = scrubbed.replace(/(?:Set-Cookie|Cookie)\s*:\s*[^\r\n,;]+/gi, 'Cookie: [REDACTED_COOKIE]');
     scrubbed = scrubbed.replace(/Bearer\s+[A-Za-z0-9_\-\.]+/gi, 'Bearer [REDACTED_TOKEN]');
-    scrubbed = scrubbed.replace(/(token|secret|password|passwd|apiKey|auth)\s*[:=]\s*['"]?[^\s"',;&]+['"]?/gi, '$1=[REDACTED_SECRET]');
 
-    // 6. Scrub IPv4 addresses (excluding 127.0.0.1 and 0.0.0.0)
-    scrubbed = scrubbed.replace(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g, (match) => {
-      if (match === '127.0.0.1' || match === '0.0.0.0') return match;
+    // 7. Scrub passwords, tokens, API keys, client secrets
+    scrubbed = scrubbed.replace(/(password|passwd|pwd|token|apiKey|api_key|secret|client_secret|auth|access_token|refresh_token|cookie)\s*[:=]\s*(?!\[REDACTED)['"]?[^\s"',;&]+['"]?/gi, '$1=[REDACTED_SECRET]');
+
+    // 8. Scrub IPv6 addresses (full, compressed, or mapped)
+    scrubbed = scrubbed.replace(/\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|\b(?:[0-9a-fA-F]{1,4}:){1,7}:|\b:(?::[0-9a-fA-F]{1,4}){1,7}\b|\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\b/g, (match) => {
+      if (match === '::1' || match === '::') return match;
       return '[REDACTED_IP]';
     });
+
+    // 9. Scrub IPv4 addresses (with optional port)
+    scrubbed = scrubbed.replace(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?::\d{1,5})?\b/g, (match) => {
+      if (match.startsWith('127.0.0.1') || match.startsWith('0.0.0.0')) return match;
+      return '[REDACTED_IP]';
+    });
+
+    // 10. Scrub Full Local Windows File Paths: C:\...\file.ext
+    scrubbed = scrubbed.replace(/[A-Za-z]:\\(?:[^\s"'<>\n\r\\]+\\)+[^\s"'<>\n\r]+/g, '[REDACTED_PATH]');
+
+    // 11. Scrub Filenames in log messages with common media/archive/executable extensions
+    scrubbed = scrubbed.replace(/"([^"\n\r]+\.(?:exe|zip|iso|mp4|mkv|pdf|tar|gz|bin|dmg|rar|7z|msi|docx?|xlsx?|avi|mov|mp3|flac|wav))"/gi, '"[REDACTED_FILENAME]"');
 
     return scrubbed;
   }
@@ -79,9 +100,15 @@ class Sanitizer {
     if (typeof obj === 'object') {
       const result = {};
       for (const [key, val] of Object.entries(obj)) {
-        // Redact any key that suggests secrets
-        if (/token|secret|password|cookie|auth|credential/i.test(key)) {
+        // Redact any key that indicates secrets or private user data
+        if (/token|secret|password|cookie|auth|credential|key|private/i.test(key)) {
           result[key] = '[REDACTED_SECRET]';
+        } else if (/url|source_url/i.test(key)) {
+          result[key] = '[REDACTED_URL]';
+        } else if (/destination_path|partial_path|path|directory|folder/i.test(key)) {
+          result[key] = '[REDACTED_PATH]';
+        } else if (/filename|file_name/i.test(key)) {
+          result[key] = '[REDACTED_FILENAME]';
         } else {
           result[key] = this.scrubObject(val, depth + 1);
         }
