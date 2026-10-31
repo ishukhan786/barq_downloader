@@ -19,7 +19,7 @@
   },
   "scripts": {
     "start": "electron .",
-    "test": "node --test \"tests/*.test.js\"",
+    "test": "node --test --test-concurrency=1 \"tests/*.test.js\"",
     "smoke": "node scripts/smoke.js",
     "syntax": "node scripts/check-syntax.js",
     "icons": "electron scripts/build-icons.js",

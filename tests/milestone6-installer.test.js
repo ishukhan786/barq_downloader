@@ -133,8 +133,10 @@ test('BARQ Downloader — Milestone 6 Windows Release & Packaging Suite', async 
     const testDir = makeTempDir('barq-upgrade-');
     const dbPath = path.join(testDir, 'barq.db');
 
-    // 1. Simulate existing previous installation with user data
-    let db = new BarqDatabase(dbPath).open();
+    // 1. Simulate existing previous installation with user data (schema v3)
+    const { MIGRATIONS } = require('../src/main/db/migrations');
+    const v3Migrations = MIGRATIONS.filter((m) => m.version <= 3);
+    let db = new BarqDatabase(dbPath, { migrations: v3Migrations }).open();
     let dRepo = new DownloadsRepo(db);
     let sRepo = new SettingsRepo(db, buildSchema({ defaultDownloadDir: testDir }));
 

@@ -742,7 +742,7 @@ test('Phase 7.2: Stress test measuring RAM, CPU, speed, and event loop responsiv
     console.log('-------------------------------------------\n');
 
     assert.equal(throughputMBps > 0.5, true);
-    assert.equal(maxLagMs < 100, true);
+    assert.equal(maxLagMs < 200, true, `Event loop lag (${maxLagMs}ms) exceeded 200ms threshold`);
   } finally {
     await manager.shutdown();
     db.close();

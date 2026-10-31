@@ -8,6 +8,9 @@ const { CATEGORIES } = require('../shared/categories');
 const { isTrustedSender, validateId, validateDownloadUrl, isPathInside } = require('./security');
 const { VIEW_FILTERS } = require('./db/downloads-repo');
 const { BarqDatabase } = require('./db/database');
+const { FeedbackRepo } = require('./db/feedback-repo');
+const { DiagnosticCollector } = require('./diagnostics/DiagnosticCollector');
+const { ZipExporter } = require('./diagnostics/ZipExporter');
 const { RegistryManager } = require('../../native-host/registry-manager');
 
 /** Fixed allowlist: the renderer can only ask to open these by key, never an arbitrary URL. */
@@ -49,6 +52,14 @@ const CHANNELS = Object.freeze([
   'shell:openDataFolder',
   'browser:getStatus',
   'browser:register',
+  'feedback:getStats',
+  'feedback:list',
+  'feedback:get',
+  'feedback:save',
+  'feedback:delete',
+  'feedback:getDiagnosticPreview',
+  'feedback:exportJson',
+  'feedback:exportZip',
 ]);
 
 function dirStats(dir) {
@@ -428,6 +439,131 @@ function registerIpc(ctx) {
 
   handle('browser:register', () => {
     return RegistryManager.register();
+  });
+
+  // -------------------------------------------------------------------------
+  // Feedback & Diagnostics (Milestone 7)
+  // -------------------------------------------------------------------------
+  const feedback = ctx.feedback || (database ? new FeedbackRepo(database) : null);
+  const diagnosticCollector = new DiagnosticCollector({
+    database,
+    downloadsRepo: downloads,
+    eventsRepo: events,
+    downloadManager,
+  });
+
+  handle('feedback:getStats', () => {
+    if (!feedback) throw userError('Feedback system unavailable');
+    return feedback.getStats();
+  });
+
+  handle('feedback:list', (opts) => {
+    if (!feedback) throw userError('Feedback system unavailable');
+    return feedback.list(opts || {});
+  });
+
+  handle('feedback:get', (idOrReportId) => {
+    if (!feedback) throw userError('Feedback system unavailable');
+    if (typeof idOrReportId === 'number' || /^\d+$/.test(String(idOrReportId))) {
+      return feedback.getById(Number(idOrReportId));
+    }
+    return feedback.getByReportId(String(idOrReportId));
+  });
+
+  handle('feedback:save', (payload) => {
+    if (!feedback) throw userError('Feedback system unavailable');
+    if (!payload || typeof payload !== 'object') throw userError('Invalid feedback payload.');
+    if (payload.id) {
+      return feedback.update(payload.id, payload);
+    }
+    return feedback.create(payload);
+  });
+
+  handle('feedback:delete', (id) => {
+    if (!feedback) throw userError('Feedback system unavailable');
+    const numId = Number(id);
+    if (!Number.isSafeInteger(numId) || numId <= 0) throw userError('Invalid report ID.');
+    const deleted = feedback.delete(numId);
+    return { deleted };
+  });
+
+  handle('feedback:getDiagnosticPreview', (opts) => {
+    return diagnosticCollector.collectDiagnosticBundle(opts || {});
+  });
+
+  handle('feedback:exportJson', async (params) => {
+    let report = null;
+    if (feedback) {
+      if (params && params.id) report = feedback.getById(params.id);
+      else if (params && params.reportId) report = feedback.getByReportId(params.reportId);
+    }
+    if (!report && params && params.report) report = params.report;
+
+    const reportId = report ? report.report_id : 'BARQ-EXPORT';
+    const defaultFilename = ZipExporter.generateJsonFilename(reportId);
+
+    const r = await dialog.showSaveDialog(parentWin(), {
+      title: 'Export BARQ Feedback Report (JSON)',
+      defaultPath: path.join(app.getPath('downloads'), defaultFilename),
+      filters: [{ name: 'JSON Document', extensions: ['json'] }],
+      properties: ['showOverwriteConfirmation', 'dontAddToRecent'],
+    });
+
+    if (r.canceled || !r.filePath) return { canceled: true };
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      barqVersion: brand.VERSION,
+      report: report || { note: 'Direct diagnostic export' },
+      diagnostics: (report && report.diagnostic_included) || (params && params.includeDiagnostics)
+        ? diagnosticCollector.collectDiagnosticBundle()
+        : null,
+    };
+
+    const res = ZipExporter.exportJson(r.filePath, exportData);
+    if (feedback && report && report.id) {
+      feedback.markExported(report.id);
+    }
+
+    return { canceled: false, path: res.path, bytes: res.bytes };
+  });
+
+  handle('feedback:exportZip', async (params) => {
+    let report = null;
+    if (feedback) {
+      if (params && params.id) report = feedback.getById(params.id);
+      else if (params && params.reportId) report = feedback.getByReportId(params.reportId);
+    }
+    if (!report && params && params.report) report = params.report;
+
+    const defaultFilename = ZipExporter.generateZipFilename();
+
+    const r = await dialog.showSaveDialog(parentWin(), {
+      title: 'Export BARQ Diagnostic Package (ZIP)',
+      defaultPath: path.join(app.getPath('downloads'), defaultFilename),
+      filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+      properties: ['showOverwriteConfirmation', 'dontAddToRecent'],
+    });
+
+    if (r.canceled || !r.filePath) return { canceled: true };
+
+    const bundle = diagnosticCollector.collectDiagnosticBundle();
+
+    const res = ZipExporter.exportZip(r.filePath, {
+      report: report || { note: 'Diagnostic package without linked report' },
+      diagnostics: {
+        system: bundle.system,
+        runtime: bundle.runtime,
+        telemetry: bundle.telemetry,
+      },
+      logs: bundle.recentLogs,
+    });
+
+    if (feedback && report && report.id) {
+      feedback.markExported(report.id);
+    }
+
+    return { canceled: false, path: res.path, bytes: res.bytes, filesCount: res.filesCount };
   });
 
   return { applyTheme, applyAutoStart };

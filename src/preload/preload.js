@@ -82,6 +82,16 @@ const api = {
     getStatus: () => call('browser:getStatus'),
     register: () => call('browser:register'),
   },
+  feedback: {
+    getStats: () => call('feedback:getStats'),
+    list: (opts) => call('feedback:list', opts || {}),
+    get: (id) => call('feedback:get', id),
+    save: (report) => call('feedback:save', report),
+    delete: (id) => call('feedback:delete', Number(id)),
+    getDiagnosticPreview: (opts) => call('feedback:getDiagnosticPreview', opts || {}),
+    exportJson: (idOrOpts) => call('feedback:exportJson', idOrOpts),
+    exportZip: (idOrOpts) => call('feedback:exportZip', idOrOpts),
+  },
 };
 
 // Deep-freeze so page scripts cannot tamper with the bridge.

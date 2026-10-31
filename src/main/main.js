@@ -16,6 +16,7 @@ const { APP_ORIGIN } = require('./security');
 const { BarqDatabase } = require('./db/database');
 const { SettingsRepo } = require('./db/settings-repo');
 const { DownloadsRepo, EventsRepo } = require('./db/downloads-repo');
+const { FeedbackRepo } = require('./db/feedback-repo');
 const { buildSchema } = require('./settings-schema');
 const { registerIpc, applyTheme } = require('./ipc');
 const { DownloadManager } = require('./engine/DownloadManager');
@@ -118,6 +119,7 @@ function start() {
     const settings = new SettingsRepo(database, schema);
     const downloads = new DownloadsRepo(database);
     const events = new EventsRepo(database);
+    const feedback = new FeedbackRepo(database);
     if (database.recoveredFrom) {
       events.add({ level: 'warn', type: 'db-recovered', message: 'A damaged database was quarantined and a fresh one was created.' });
     }
@@ -154,7 +156,7 @@ function start() {
     });
 
     registerIpc({
-      database, settings, downloads, events, layout, dataInfo, logger,
+      database, settings, downloads, events, feedback, layout, dataInfo, logger,
       getMainWindow: () => mainWindow, trustedIds, engineState, downloadManager,
       pipeServer,
     });

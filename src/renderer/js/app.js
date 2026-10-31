@@ -5,6 +5,7 @@ import { LIST_VIEWS, renderList } from './views/downloads.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderSettings } from './views/settings.js';
 import { renderAbout } from './views/about.js';
+import { renderFeedback } from './views/feedback.js';
 import { showAddDownloadDialog } from './views/add-download.js';
 
 class BarqApp {
@@ -143,7 +144,7 @@ class BarqApp {
       this.currentViewInstance = null;
     }
 
-    const validViews = ['dashboard', 'settings', 'about', ...Object.keys(LIST_VIEWS)];
+    const validViews = ['dashboard', 'settings', 'about', 'feedback', ...Object.keys(LIST_VIEWS)];
     const targetView = validViews.includes(viewId) ? viewId : 'dashboard';
     this.state.view = targetView;
 
@@ -189,6 +190,8 @@ class BarqApp {
       this.currentViewInstance = renderSettings(main, ctx);
     } else if (targetView === 'about') {
       this.currentViewInstance = renderAbout(main, ctx);
+    } else if (targetView === 'feedback') {
+      this.currentViewInstance = renderFeedback(main, ctx);
     } else if (LIST_VIEWS[targetView]) {
       this.currentViewInstance = renderList(main, ctx, targetView);
     }

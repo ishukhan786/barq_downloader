@@ -108,6 +108,35 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 4,
+    name: 'feedback_system',
+    up(db) {
+      db.exec(`
+        CREATE TABLE feedback_reports (
+          id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+          report_id            TEXT    UNIQUE NOT NULL,
+          report_type          TEXT    NOT NULL CHECK (report_type IN ('bug', 'feature')),
+          title                TEXT    NOT NULL,
+          category             TEXT    NOT NULL,
+          severity             TEXT    CHECK (severity IS NULL OR severity IN ('low', 'medium', 'high', 'critical')),
+          description          TEXT    NOT NULL,
+          reproduction_steps   TEXT,
+          expected_behavior    TEXT,
+          actual_behavior      TEXT,
+          status               TEXT    NOT NULL DEFAULT 'saved' CHECK (status IN ('draft', 'saved', 'exported', 'ready')),
+          created_at           INTEGER NOT NULL,
+          updated_at           INTEGER NOT NULL,
+          exported_at          INTEGER,
+          diagnostic_included  INTEGER NOT NULL DEFAULT 0 CHECK (diagnostic_included IN (0, 1))
+        );
+
+        CREATE INDEX idx_feedback_created_at ON feedback_reports(created_at DESC);
+        CREATE INDEX idx_feedback_type       ON feedback_reports(report_type);
+        CREATE INDEX idx_feedback_status     ON feedback_reports(status);
+      `);
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);
