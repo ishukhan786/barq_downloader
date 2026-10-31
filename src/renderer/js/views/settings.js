@@ -7,6 +7,7 @@ export function renderSettings(root, ctx) {
   let settings = {};
   let dbInfo = {};
   let tempInfo = {};
+  let browserInfo = {};
   let disposed = false;
 
   const container = h('div', { class: 'settings' });
@@ -230,11 +231,29 @@ export function renderSettings(root, ctx) {
           }),
           h('span'))));
 
+    const hostStatusRow = h('div', { class: 'setting-row' },
+      h('div', { class: 'setting-text' },
+        h('span', { class: 'label', text: 'Native Messaging Host Status' }),
+        h('div', { style: 'display: flex; gap: 8px; margin-top: 4px; font-size: 11px;' },
+          h('span', { class: `badge ${browserInfo?.chromeRegistered ? 'badge-ok' : 'badge-warn'}`, text: browserInfo?.chromeRegistered ? '✓ Chrome Registered' : 'Chrome Not Registered' }),
+          h('span', { class: `badge ${browserInfo?.edgeRegistered ? 'badge-ok' : 'badge-warn'}`, text: browserInfo?.edgeRegistered ? '✓ Edge Registered' : 'Edge Not Registered' }),
+          h('span', { class: `badge ${browserInfo?.pipeRunning ? 'badge-ok' : 'badge-muted'}`, text: browserInfo?.pipeRunning ? '● Pipe Listening' : 'Pipe Inactive' }))),
+      h('div', { class: 'setting-control' },
+        h('button', {
+          class: 'btn btn-sm btn-primary',
+          type: 'button',
+          onclick: async () => {
+            const res = await guard(ctx.api.browser.register(), 'Native host registered for Chrome & Edge');
+            if (res?.ok) refresh();
+          },
+        }, icon('check'), 'Register Host')));
+
     const browserCard = h('div', { class: 'card settings-section' },
       h('h2', { text: 'Browser Extensions' }),
-      h('p', { class: 'section-sub', text: 'Integration with Chrome and Microsoft Edge (Milestone 4).' }),
+      h('p', { class: 'section-sub', text: 'Integration with Google Chrome and Microsoft Edge (Milestone 4).' }),
       bridgeRow,
-      confirmBrowserRow);
+      confirmBrowserRow,
+      hostStatusRow);
 
     // Section 4: Storage & Maintenance
     const dataDirRow = h('div', { class: 'setting-row' },
@@ -319,15 +338,17 @@ export function renderSettings(root, ctx) {
 
   async function refresh() {
     try {
-      const [s, db, temp] = await Promise.all([
+      const [s, db, temp, browser] = await Promise.all([
         ctx.api.settings.get(),
         ctx.api.database.info(),
         ctx.api.temp.info(),
+        ctx.api.browser ? ctx.api.browser.getStatus() : Promise.resolve({}),
       ]);
       if (disposed) return;
       settings = s;
       dbInfo = db;
       tempInfo = temp;
+      browserInfo = browser || {};
       render();
     } catch (err) {
       if (!disposed) toast(err.message, 'error');

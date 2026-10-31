@@ -18,6 +18,7 @@ const { DownloadsRepo, EventsRepo } = require('./db/downloads-repo');
 const { buildSchema } = require('./settings-schema');
 const { registerIpc, applyTheme } = require('./ipc');
 const { DownloadManager } = require('./engine/DownloadManager');
+const { NativePipeServer } = require('./native-pipe-server');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const SMOKE = process.env.BARQ_SMOKE === '1';
@@ -62,6 +63,7 @@ function start() {
   /** @type {Electron.BrowserWindow | null} */
   let mainWindow = null;
   let downloadManagerInstance = null;
+  let pipeServer = null;
   let splash = null;
   let database = null;
   const trustedIds = new Set();
@@ -140,9 +142,20 @@ function start() {
       logger.error('Failed to initialize download manager:', err);
     });
 
+    pipeServer = new NativePipeServer({
+      dataDir: layout.dataDir,
+      downloadManager,
+      logger,
+      getMainWindow: () => mainWindow,
+    });
+    pipeServer.start().catch((err) => {
+      logger.error('Failed to start NativePipeServer:', err);
+    });
+
     registerIpc({
       database, settings, downloads, events, layout, dataInfo, logger,
       getMainWindow: () => mainWindow, trustedIds, engineState, downloadManager,
+      pipeServer,
     });
 
     // Windows ------------------------------------------------------------------
@@ -169,6 +182,10 @@ function start() {
   app.on('window-all-closed', () => app.quit());
 
   app.on('before-quit', async () => {
+    if (pipeServer) {
+      await pipeServer.stop();
+      pipeServer = null;
+    }
     if (downloadManagerInstance) {
       await downloadManagerInstance.shutdown();
       downloadManagerInstance = null;

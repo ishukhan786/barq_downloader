@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "BARQ Downloader",
+  "version": "0.1.0",
+  "description": "Official browser companion for BARQ Downloader (برق ڈاؤنلوڈر) — Speed at Every Click.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsRAgyxOrZPF1/8QUuVd+TLE3uqtAx7Nvgj+YgmZYnUlMb/35CMs6yCRrV6CTW0DKQzTOMVH1qEntFa8GSNp9XTFwEvkKUS/wJgBWhMyyiN1Y3X+gt0CgXtirzQVZIRz36Eae+zEluqyIMF+AtYum5FN4zV3b2WG8s7UEKTvMeeEpp9npSuWSIchndTmFyNXjr4sJzB5bZDChn+qFR9fcI/WsXNDbzPDFgCXQn3Rv326H0hxuV2vtyjyXfoH2xZfH415sczLGB3O0ub29tY5HSCb63zjNIDr5awDne/is3DhyncmzubONE6S6gzqHo/a6zLutJYpZ5I7APWIwqqdj0wIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "contextMenus",
+    "nativeMessaging",
+    "storage",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "BARQ Downloader"
+  }
+}

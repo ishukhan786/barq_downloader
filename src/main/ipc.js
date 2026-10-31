@@ -8,6 +8,7 @@ const { CATEGORIES } = require('../shared/categories');
 const { isTrustedSender, validateId, validateDownloadUrl, isPathInside } = require('./security');
 const { VIEW_FILTERS } = require('./db/downloads-repo');
 const { BarqDatabase } = require('./db/database');
+const { RegistryManager } = require('../../native-host/registry-manager');
 
 /** Fixed allowlist: the renderer can only ask to open these by key, never an arbitrary URL. */
 const EXTERNAL_LINKS = Object.freeze({
@@ -46,6 +47,8 @@ const CHANNELS = Object.freeze([
   'temp:clear',
   'shell:openExternal',
   'shell:openDataFolder',
+  'browser:getStatus',
+  'browser:register',
 ]);
 
 function dirStats(dir) {
@@ -412,6 +415,19 @@ function registerIpc(ctx) {
     const err = await shell.openPath(layout.dataDir);
     if (err) throw userError(err);
     return true;
+  });
+
+  handle('browser:getStatus', () => {
+    const regStatus = RegistryManager.checkStatus();
+    return {
+      ...regStatus,
+      pipeRunning: Boolean(ctx.pipeServer && ctx.pipeServer.isRunning),
+      pipePath: ctx.pipeServer ? ctx.pipeServer.pipePath : null,
+    };
+  });
+
+  handle('browser:register', () => {
+    return RegistryManager.register();
   });
 
   return { applyTheme, applyAutoStart };

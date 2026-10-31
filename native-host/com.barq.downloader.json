@@ -1,0 +1,10 @@
+{
+  "name": "com.barq.downloader",
+  "description": "BARQ Downloader Native Messaging Host",
+  "path": "D:\\Projects\\BARQ_DOWNLOADER\\native-host\\barq-native-host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://gnbkgloidbhnmbllllgaflmblimmhgli/",
+    "extension://gnbkgloidbhnmbllllgaflmblimmhgli/"
+  ]
+}

@@ -78,6 +78,10 @@ const api = {
     openExternal: (key) => call('shell:openExternal', String(key)),
     openDataFolder: () => call('shell:openDataFolder'),
   },
+  browser: {
+    getStatus: () => call('browser:getStatus'),
+    register: () => call('browser:register'),
+  },
 };
 
 // Deep-freeze so page scripts cannot tamper with the bridge.
