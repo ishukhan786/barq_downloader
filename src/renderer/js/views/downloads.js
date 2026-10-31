@@ -59,17 +59,60 @@ export function renderList(root, ctx, viewId) {
     clear(toolbar);
     const r = selected();
     const none = !r;
+
+    const canPause = r && (r.status === 'downloading' || r.status === 'queued');
+    const canResume = r && (r.status === 'paused' || r.status === 'queued');
+    const canCancel = r && ['downloading', 'queued', 'paused'].includes(r.status);
+    const canRetry = r && ['failed', 'canceled', 'paused'].includes(r.status);
+    const canOpen = r && r.status === 'completed';
+
     toolbar.append(
-      btn('Pause', 'pause', null, { disabled: true, title: ENGINE_NOTE }),
-      btn('Resume', 'play', null, { disabled: true, title: ENGINE_NOTE }),
-      btn('Cancel', 'x', null, { disabled: true, title: ENGINE_NOTE }),
-      btn('Retry', 'retry', null, { disabled: true, title: ENGINE_NOTE }),
+      btn('Pause', 'pause', () => pauseSelected(r), { disabled: !canPause }),
+      btn('Resume', 'play', () => resumeSelected(r), { disabled: !canResume }),
+      btn('Cancel', 'x', () => cancelSelected(r), { disabled: !canCancel }),
+      btn('Retry', 'retry', () => retrySelected(r), { disabled: !canRetry }),
       h('span', { class: 'toolbar-sep', 'aria-hidden': 'true' }),
+      btn('Open file', 'file', () => guard(ctx.api.downloads.openFile(r.id)), { disabled: !canOpen }),
       btn('Open folder', 'folder', () => guard(ctx.api.downloads.showInFolder(r.id)), { disabled: none }),
       btn('Copy URL', 'link', () => guard(ctx.api.downloads.copyUrl(r.id), 'URL copied to clipboard'), { disabled: none }),
       btn('Error details', 'alert', () => showError(r), { disabled: none || !(r.error_code || r.error_message) }),
       btn('Remove', 'trash', () => removeSelected(), { disabled: none || r.status === 'downloading', cls: 'btn-danger' }),
     );
+  }
+
+  async function pauseSelected(r) {
+    if (!r) return;
+    await guard(ctx.api.downloads.pause(r.id), `Paused "${r.filename}"`);
+    await refresh();
+    ctx.refreshStats();
+  }
+
+  async function resumeSelected(r) {
+    if (!r) return;
+    await guard(ctx.api.downloads.resume(r.id), `Resumed "${r.filename}"`);
+    await refresh();
+    ctx.refreshStats();
+  }
+
+  async function cancelSelected(r) {
+    if (!r) return;
+    const ok = await confirmDialog({
+      title: 'Cancel download?',
+      message: `Stop downloading "${r.filename}"? Incomplete data will be preserved unless deleted.`,
+      confirmLabel: 'Cancel Download',
+      danger: true,
+    });
+    if (!ok) return;
+    await guard(ctx.api.downloads.cancel(r.id, false), `Canceled "${r.filename}"`);
+    await refresh();
+    ctx.refreshStats();
+  }
+
+  async function retrySelected(r) {
+    if (!r) return;
+    await guard(ctx.api.downloads.retry(r.id), `Retrying "${r.filename}"`);
+    await refresh();
+    ctx.refreshStats();
   }
 
   async function removeSelected() {
@@ -181,6 +224,31 @@ export function renderList(root, ctx, viewId) {
   return {
     refresh,
     onSearch(value) { if (localSearch.value !== value) localSearch.value = value; refresh(); },
+    onProgress(payload) {
+      const tr = tableHost.querySelector(`tr[data-id="${payload.id}"]`);
+      if (!tr) return;
+
+      const r = rows.find((x) => x.id === payload.id);
+      if (r) {
+        r.downloaded_bytes = payload.downloadedBytes;
+        if (payload.totalBytes !== null) r.total_bytes = payload.totalBytes;
+      }
+
+      const pct = percent(payload.downloadedBytes, payload.totalBytes);
+      const progSpan = tr.querySelector('.progress > span');
+      if (progSpan && pct !== null) {
+        progSpan.style.width = `${pct}%`;
+      }
+      const pctLabel = tr.querySelector('.progress-cell small');
+      if (pctLabel) {
+        pctLabel.textContent = pct !== null ? `${pct.toFixed(0)}%` : '—';
+      }
+
+      const tds = tr.querySelectorAll('td');
+      if (tds[4]) tds[4].textContent = formatBytes(payload.downloadedBytes);
+      if (tds[6]) tds[6].textContent = formatSpeed(payload.currentSpeed);
+      if (tds[7]) tds[7].textContent = formatEta(payload.etaSeconds);
+    },
     dispose() { disposed = true; },
   };
 }

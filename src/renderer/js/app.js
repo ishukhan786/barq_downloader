@@ -183,6 +183,21 @@ class BarqApp {
       });
     }
 
+    // Download Engine Live Events
+    this.api.downloads.onProgress((payload) => {
+      this.liveStats.set(payload.id, payload);
+      if (this.currentViewInstance && typeof this.currentViewInstance.onProgress === 'function') {
+        this.currentViewInstance.onProgress(payload);
+      }
+    });
+
+    this.api.downloads.onStateChanged((payload) => {
+      this.refreshStats();
+      if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {
+        this.currentViewInstance.refresh();
+      }
+    });
+
     // Settings listener
     this.api.settings.onChanged((updatedSettings) => {
       if (this.currentViewInstance && typeof this.currentViewInstance.refresh === 'function') {

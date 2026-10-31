@@ -15,7 +15,7 @@ const VIEW_FILTERS = Object.freeze({
 
 const LIST_COLUMNS = `id, source_url, filename, destination_path, status, total_bytes, downloaded_bytes,
   created_at, updated_at, completed_at, mime_type, supports_ranges, error_code, error_message,
-  task_type, category, queue_position, scheduled_at`;
+  task_type, category, queue_position, scheduled_at, retry_count, partial_path`;
 
 function escapeLike(s) {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -81,17 +81,115 @@ class DownloadsRepo {
     const res = this.database.prepare(`
       INSERT INTO downloads (source_url, filename, destination_path, status, total_bytes, downloaded_bytes,
         created_at, updated_at, completed_at, mime_type, etag, last_modified, supports_ranges,
-        error_code, error_message, task_type, category, queue_position, speed_limit_bps, max_segments, scheduled_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        error_code, error_message, task_type, category, queue_position, speed_limit_bps, max_segments, scheduled_at,
+        retry_count, partial_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       d.source_url, d.filename, d.destination_path, d.status || 'queued',
       d.total_bytes ?? null, d.downloaded_bytes ?? 0,
       d.created_at ?? now, now, d.completed_at ?? null,
       d.mime_type ?? null, d.etag ?? null, d.last_modified ?? null, d.supports_ranges ? 1 : 0,
       d.error_code ?? null, d.error_message ?? null, d.task_type || 'http',
       d.category || categorize(d.filename, d.mime_type), d.queue_position ?? 0,
-      d.speed_limit_bps ?? 0, d.max_segments ?? 0, d.scheduled_at ?? null
+      d.speed_limit_bps ?? 0, d.max_segments ?? 0, d.scheduled_at ?? null,
+      d.retry_count ?? 0, d.partial_path ?? null
     );
     return Number(res.lastInsertRowid);
+  }
+
+  /**
+   * Updates download progress (bytes and optionally total).
+   */
+  updateProgress(id, { downloaded_bytes, total_bytes, status }) {
+    const now = Date.now();
+    if (total_bytes !== undefined) {
+      return this.database.prepare(`
+        UPDATE downloads SET downloaded_bytes = ?, total_bytes = ?, status = COALESCE(?, status), updated_at = ?
+        WHERE id = ?
+      `).run(downloaded_bytes, total_bytes, status || null, now, id);
+    }
+    return this.database.prepare(`
+      UPDATE downloads SET downloaded_bytes = ?, status = COALESCE(?, status), updated_at = ?
+      WHERE id = ?
+    `).run(downloaded_bytes, status || null, now, id);
+  }
+
+  /**
+   * Updates state transition (status, errors, completion, partial path).
+   */
+  updateStatus(id, status, { error_code = null, error_message = null, completed_at = null, partial_path } = {}) {
+    const now = Date.now();
+    if (partial_path !== undefined) {
+      return this.database.prepare(`
+        UPDATE downloads SET status = ?, error_code = ?, error_message = ?, completed_at = ?, partial_path = ?, updated_at = ?
+        WHERE id = ?
+      `).run(status, error_code, error_message, completed_at, partial_path, now, id);
+    }
+    return this.database.prepare(`
+      UPDATE downloads SET status = ?, error_code = ?, error_message = ?, completed_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(status, error_code, error_message, completed_at, now, id);
+  }
+
+  /**
+   * Updates discovered HTTP metadata during probe or start.
+   */
+  updateMetadata(id, meta) {
+    const now = Date.now();
+    return this.database.prepare(`
+      UPDATE downloads SET
+        mime_type = COALESCE(?, mime_type),
+        etag = COALESCE(?, etag),
+        last_modified = COALESCE(?, last_modified),
+        supports_ranges = COALESCE(?, supports_ranges),
+        total_bytes = COALESCE(?, total_bytes),
+        filename = COALESCE(?, filename),
+        category = COALESCE(?, category),
+        partial_path = COALESCE(?, partial_path),
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      meta.mime_type ?? null,
+      meta.etag ?? null,
+      meta.last_modified ?? null,
+      meta.supports_ranges !== undefined ? (meta.supports_ranges ? 1 : 0) : null,
+      meta.total_bytes ?? null,
+      meta.filename ?? null,
+      meta.category ?? null,
+      meta.partial_path ?? null,
+      now,
+      id
+    );
+  }
+
+  /**
+   * Increments retry count and sets error details.
+   */
+  incrementRetry(id, errorCode, errorMessage) {
+    const now = Date.now();
+    return this.database.prepare(`
+      UPDATE downloads SET retry_count = retry_count + 1, error_code = ?, error_message = ?, updated_at = ?
+      WHERE id = ?
+    `).run(errorCode, errorMessage, now, id);
+  }
+
+  /**
+   * Resets retry count to 0.
+   */
+  resetRetry(id) {
+    const now = Date.now();
+    return this.database.prepare(`
+      UPDATE downloads SET retry_count = 0, error_code = null, error_message = null, updated_at = ?
+      WHERE id = ?
+    `).run(now, id);
+  }
+
+  /**
+   * Returns all downloads that were in-progress or queued when the app last stopped.
+   */
+  getUnfinished() {
+    return this.database.prepare(
+      `SELECT ${LIST_COLUMNS}, etag, last_modified FROM downloads WHERE status IN ('downloading', 'queued', 'scheduled')`
+    ).all();
   }
 
   /** Removes a record from history (segments cascade). Does not touch files. */

@@ -21,8 +21,17 @@ const CHANNELS = Object.freeze([
   'app:getInfo',
   'stats:get',
   'downloads:list',
+  'downloads:add',
+  'downloads:probe',
+  'downloads:pause',
+  'downloads:resume',
+  'downloads:cancel',
+  'downloads:retry',
   'downloads:remove',
   'downloads:showInFolder',
+  'downloads:openFile',
+  'downloads:details',
+  'downloads:chooseDestination',
   'downloads:copyUrl',
   'queue:get',
   'activity:recent',
@@ -89,7 +98,7 @@ function applyAutoStart(enabled, logger) {
  * @param {{ overallSpeedBps: number, activeTransfers: number }} ctx.engineState
  */
 function registerIpc(ctx) {
-  const { database, settings, downloads, events, layout, dataInfo, logger, getMainWindow, trustedIds, engineState } = ctx;
+  const { database, settings, downloads, events, layout, dataInfo, logger, getMainWindow, trustedIds, engineState, downloadManager } = ctx;
 
   const broadcast = (channel, payload) => {
     const win = getMainWindow();
@@ -135,14 +144,107 @@ function registerIpc(ctx) {
     dataReason: dataInfo.reason,
     dataDir: layout.dataDir,
     categories: CATEGORIES,
-    engineAvailable: false, // Milestone 2
+    engineAvailable: true,
   }));
 
-  handle('stats:get', () => ({
-    ...downloads.stats(),
-    overallSpeedBps: engineState.overallSpeedBps,
-    activeTransfers: engineState.activeTransfers,
-  }));
+  handle('stats:get', () => {
+    const globalTel = downloadManager ? downloadManager.getGlobalTelemetry() : engineState;
+    return {
+      ...downloads.stats(),
+      overallSpeedBps: globalTel.overallSpeedBps,
+      activeTransfers: globalTel.activeTransfers,
+    };
+  });
+
+  handle('downloads:probe', async (url) => {
+    const val = validateDownloadUrl(url);
+    if (!val.ok) throw userError(val.error);
+    if (!downloadManager) throw userError('Download engine not ready.');
+    return downloadManager.probe(val.url);
+  });
+
+  handle('downloads:add', async (params) => {
+    if (!params || typeof params !== 'object') throw userError('Invalid parameters.');
+    const val = validateDownloadUrl(params.url);
+    if (!val.ok) throw userError(val.error);
+    if (!downloadManager) throw userError('Download engine not ready.');
+
+    const filename = typeof params.filename === 'string' ? params.filename.trim() : null;
+    const dest = typeof params.destination === 'string' ? params.destination.trim() : null;
+    const startNow = params.startNow !== false;
+
+    const record = await downloadManager.add({
+      sourceUrl: val.url,
+      filename,
+      destinationPath: dest,
+      startNow,
+    });
+    return record;
+  });
+
+  handle('downloads:pause', async (id) => {
+    const vid = validateId(id);
+    if (!vid) throw userError('Invalid download id.');
+    if (!downloadManager) throw userError('Download engine not ready.');
+    return downloadManager.pause(vid);
+  });
+
+  handle('downloads:resume', async (id) => {
+    const vid = validateId(id);
+    if (!vid) throw userError('Invalid download id.');
+    if (!downloadManager) throw userError('Download engine not ready.');
+    return downloadManager.resume(vid);
+  });
+
+  handle('downloads:cancel', async (args) => {
+    const id = typeof args === 'object' && args !== null ? args.id : args;
+    const deletePartial = typeof args === 'object' && args !== null ? !!args.deletePartial : false;
+    const vid = validateId(id);
+    if (!vid) throw userError('Invalid download id.');
+    if (!downloadManager) throw userError('Download engine not ready.');
+    return downloadManager.cancel(vid, deletePartial);
+  });
+
+  handle('downloads:retry', async (id) => {
+    const vid = validateId(id);
+    if (!vid) throw userError('Invalid download id.');
+    if (!downloadManager) throw userError('Download engine not ready.');
+    return downloadManager.retry(vid);
+  });
+
+  handle('downloads:openFile', (id) => {
+    const vid = validateId(id);
+    if (!vid) throw userError('Invalid download id.');
+    const rec = downloads.getById(vid);
+    if (!rec) throw userError('Download not found.');
+    if (rec.status !== 'completed') throw userError('Only completed files can be opened.');
+    const full = path.join(rec.destination_path, rec.filename);
+    if (!fs.existsSync(full)) throw userError('The downloaded file could not be found on disk.');
+    shell.openPath(full);
+    return true;
+  });
+
+  handle('downloads:details', (id) => {
+    const vid = validateId(id);
+    if (!vid) throw userError('Invalid download id.');
+    const rec = downloads.getById(vid);
+    if (!rec) throw userError('Download not found.');
+    const tel = downloadManager ? downloadManager.getTelemetry(vid) : null;
+    return { ...rec, telemetry: tel };
+  });
+
+  handle('downloads:chooseDestination', async () => {
+    const current = settings.get('downloadDir');
+    const r = await dialog.showOpenDialog(parentWin(), {
+      title: 'Choose destination folder',
+      defaultPath: current || app.getPath('downloads'),
+      properties: ['openDirectory', 'createDirectory', 'dontAddToRecent'],
+    });
+    if (r.canceled || !r.filePaths[0]) return { canceled: true, path: current };
+    const dir = r.filePaths[0];
+    try { fs.accessSync(dir, fs.constants.W_OK); } catch { throw userError('BARQ cannot write to that folder. Choose another.'); }
+    return { canceled: false, path: dir };
+  });
 
   handle('downloads:list', (q) => {
     const query = q && typeof q === 'object' ? q : {};
@@ -152,13 +254,17 @@ function registerIpc(ctx) {
     return downloads.list({ view, search });
   });
 
-  handle('downloads:remove', (id) => {
+  handle('downloads:remove', async (id) => {
     const vid = validateId(id);
     if (!vid) throw userError('Invalid download id.');
     const rec = downloads.getById(vid);
     if (!rec) throw userError('Download not found.');
     if (rec.status === 'downloading') throw userError('Pause or cancel the download before removing it.');
-    downloads.remove(vid);
+    if (downloadManager) {
+      await downloadManager.remove(vid);
+    } else {
+      downloads.remove(vid);
+    }
     events.add({ type: 'removed', message: `Removed "${rec.filename}" from the list` });
     return true;
   });

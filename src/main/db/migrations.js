@@ -82,6 +82,16 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'download_engine_v2',
+    up(db) {
+      db.exec(`
+        ALTER TABLE downloads ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0);
+        ALTER TABLE downloads ADD COLUMN partial_path TEXT;
+      `);
+    },
+  },
 ];
 
 const LATEST_VERSION = MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);

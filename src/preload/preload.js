@@ -16,7 +16,7 @@ async function call(channel, arg) {
   return res.data;
 }
 
-const EVENT_CHANNELS = new Set(['settings:changed']);
+const EVENT_CHANNELS = new Set(['settings:changed', 'download:progress', 'download:state-changed']);
 
 function subscribe(channel, callback) {
   if (!EVENT_CHANNELS.has(channel) || typeof callback !== 'function') return () => {};
@@ -34,11 +34,22 @@ const api = {
   },
   downloads: {
     list: (view, search) => call('downloads:list', { view: String(view), search: String(search || '') }),
+    add: (params) => call('downloads:add', params),
+    probe: (url) => call('downloads:probe', String(url)),
+    pause: (id) => call('downloads:pause', Number(id)),
+    resume: (id) => call('downloads:resume', Number(id)),
+    cancel: (id, deletePartial = false) => call('downloads:cancel', { id: Number(id), deletePartial: Boolean(deletePartial) }),
+    retry: (id) => call('downloads:retry', Number(id)),
     remove: (id) => call('downloads:remove', Number(id)),
     showInFolder: (id) => call('downloads:showInFolder', Number(id)),
+    openFile: (id) => call('downloads:openFile', Number(id)),
+    details: (id) => call('downloads:details', Number(id)),
+    chooseDestination: () => call('downloads:chooseDestination'),
     copyUrl: (id) => call('downloads:copyUrl', Number(id)),
     queue: () => call('queue:get'),
     validateUrl: (url) => call('url:validate', String(url)),
+    onProgress: (cb) => subscribe('download:progress', cb),
+    onStateChanged: (cb) => subscribe('download:state-changed', cb),
   },
   activity: {
     recent: () => call('activity:recent'),

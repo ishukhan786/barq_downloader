@@ -17,6 +17,7 @@ const { SettingsRepo } = require('./db/settings-repo');
 const { DownloadsRepo, EventsRepo } = require('./db/downloads-repo');
 const { buildSchema } = require('./settings-schema');
 const { registerIpc, applyTheme } = require('./ipc');
+const { DownloadManager } = require('./engine/DownloadManager');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const SMOKE = process.env.BARQ_SMOKE === '1';
@@ -59,6 +60,7 @@ function start() {
 
   /** @type {Electron.BrowserWindow | null} */
   let mainWindow = null;
+  let downloadManagerInstance = null;
   let splash = null;
   let database = null;
   const trustedIds = new Set();
@@ -119,9 +121,26 @@ function start() {
 
     applyTheme(settings.get('theme'));
 
+    const downloadManager = new DownloadManager({
+      downloadsRepo: downloads,
+      settingsRepo: settings,
+      eventsRepo: events,
+      logger,
+      broadcast: (channel, payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(channel, payload);
+        }
+      },
+    });
+
+    downloadManagerInstance = downloadManager;
+    downloadManager.init().catch((err) => {
+      logger.error('Failed to initialize download manager:', err);
+    });
+
     registerIpc({
       database, settings, downloads, events, layout, dataInfo, logger,
-      getMainWindow: () => mainWindow, trustedIds, engineState,
+      getMainWindow: () => mainWindow, trustedIds, engineState, downloadManager,
     });
 
     // Windows ------------------------------------------------------------------
@@ -146,7 +165,11 @@ function start() {
 
   app.on('window-all-closed', () => app.quit());
 
-  app.on('before-quit', () => {
+  app.on('before-quit', async () => {
+    if (downloadManagerInstance) {
+      await downloadManagerInstance.shutdown();
+      downloadManagerInstance = null;
+    }
     if (database) {
       database.close();
       database = null;
